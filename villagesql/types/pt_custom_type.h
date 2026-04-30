@@ -130,8 +130,9 @@ class PT_custom_type : public PT_type {
     TypeParameters params(params_str);
 
     type_context = nullptr;
-    if (ResolveTypeToContext(extension_name, type_name, params, *thd->mem_root,
-                             type_context)) {
+    if (ResolveTypeToContext({extension_name.str, extension_name.length},
+                             {type_name.str, type_name.length}, params,
+                             *thd->mem_root, type_context)) {
       return true;
     }
     return false;
@@ -144,7 +145,8 @@ class PT_custom_type : public PT_type {
                                 const char *length) {
     const TypeContext *type_context = nullptr;
     TypeParameters empty_params;
-    if (ResolveTypeToContext(extension_name, type_name, empty_params,
+    if (ResolveTypeToContext({extension_name.str, extension_name.length},
+                             {type_name.str, type_name.length}, empty_params,
                              *thd->mem_root, type_context)) {
       return nullptr;
     }
@@ -227,7 +229,8 @@ class PT_custom_type : public PT_type {
 
     const TypeContext *type_context = nullptr;
     TypeParameters empty_params;
-    if (ResolveTypeToContext(extension_name, type_name, empty_params,
+    if (ResolveTypeToContext({extension_name.str, extension_name.length},
+                             {type_name.str, type_name.length}, empty_params,
                              *thd->mem_root, type_context)) {
       return nullptr;
     }
