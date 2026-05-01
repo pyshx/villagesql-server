@@ -1437,8 +1437,7 @@ void SetVDFReturnTypeContext(THD *thd, const LEX_STRING &extension_name,
   }
 
   const TypeContext *return_type_ctx = nullptr;
-  if (!ResolveTypeToContext({extension_name.str, extension_name.length},
-                            return_type_name,
+  if (!ResolveTypeToContext(to_string_view(extension_name), return_type_name,
                             return_params ? *return_params : TypeParameters{},
                             *thd->mem_root, return_type_ctx) &&
       return_type_ctx != nullptr) {
