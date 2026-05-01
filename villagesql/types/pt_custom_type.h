@@ -131,8 +131,8 @@ class PT_custom_type : public PT_type {
 
     type_context = nullptr;
     if (ResolveTypeToContext(to_string_view(extension_name),
-                             to_string_view(type_name), params,
-                             *thd->mem_root, type_context)) {
+                             to_string_view(type_name), params, *thd->mem_root,
+                             type_context)) {
       return true;
     }
     return false;
