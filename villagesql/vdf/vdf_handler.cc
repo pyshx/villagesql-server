@@ -172,7 +172,8 @@ bool vdf_handler::fix_fields(THD *thd [[maybe_unused]],
   // return_params inferred from args via the call to
   // ValidateAndConvertVDFArguments.
   if (signature != nullptr && signature->return_type.id == VEF_TYPE_CUSTOM) {
-    villagesql::SetVDFReturnTypeContext(thd, to_string_view(m_udf->extension_name),
+    villagesql::SetVDFReturnTypeContext(thd,
+                                        to_string_view(m_udf->extension_name),
                                         signature, func, &return_params);
     m_return_type_context = func->get_type_context();
   }

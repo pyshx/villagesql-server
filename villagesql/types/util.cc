@@ -1415,8 +1415,8 @@ bool ValidateAndConvertVDFArguments(THD *thd, const char *func_name,
   if (out_return_params != nullptr &&
       signature->return_type.id == VEF_TYPE_CUSTOM &&
       signature->return_type.custom_type != nullptr) {
-    const std::string return_qbn =
-        make_qualified_base_name(extension_name, signature->return_type.custom_type);
+    const std::string return_qbn = make_qualified_base_name(
+        extension_name, signature->return_type.custom_type);
     auto it = known_params.find(return_qbn);
     if (it != known_params.end()) {
       *out_return_params = *it->second.params;
