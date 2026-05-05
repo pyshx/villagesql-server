@@ -3764,6 +3764,9 @@ class Item : public Parse_tree_node {
     return custom_type;
   }
   void set_type_context(const villagesql::TypeContext *tc) { custom_type = tc; }
+  void update_type_context(const villagesql::TypeContext *tc) {
+    custom_type = tc;
+  }
   virtual bool has_type_context() const { return nullptr != custom_type; }
   villagesql::TypeEncoder *get_type_encoder() const { return type_encoder_; }
   void set_type_encoder(villagesql::TypeEncoder *encoder) {
