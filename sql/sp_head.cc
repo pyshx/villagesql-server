@@ -1985,8 +1985,10 @@ Field *sp_head::create_result_field(THD *thd, size_t field_max_length,
 
   // VillageSQL: propagate custom type context so the result field decodes
   // correctly when the function return value is read (e.g. SELECT f1()).
+  // make_field() already sets TC from m_return_field_def.custom_type_context;
+  // this re-sets to the shared_ptr-owned ref kept alive by sp_head.
   if (m_return_type_context_ref) {
-    field->set_type_context(m_return_type_context_ref.get());
+    field->update_type_context(m_return_type_context_ref.get());
   }
 
   assert(field->pack_length() == m_return_field_def.pack_length());

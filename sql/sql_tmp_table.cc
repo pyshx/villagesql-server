@@ -293,9 +293,11 @@ static Field *create_tmp_field_from_item(Item *item, TABLE *table) {
   new_field->init(table);
 
   // VillageSQL: Copy type_context for custom types so charset_for_protocol()
-  // works correctly in derived tables
+  // works correctly in derived tables. Some make_*_field paths (notably
+  // Item_sum::make_string_field) pre-set the TC on the fresh Field, so this
+  // is a re-set rather than a first-set.
   if (item->has_type_context()) {
-    new_field->set_type_context(item->get_type_context());
+    new_field->update_type_context(item->get_type_context());
   }
 
   if (item->type() == Item::NULL_ITEM)
@@ -438,7 +440,10 @@ Field *create_tmp_field(THD *thd, TABLE *table, Item *item, Item::Type type,
           item_field->set_result_field(result);
       }
       if (item->has_type_context()) {
-        result->set_type_context(item->get_type_context());
+        // create_tmp_field_from_field clones the source Field (which carries
+        // the TC); create_tmp_field_from_item also pre-sets it. This is a
+        // re-set sync point regardless of which path produced result.
+        result->update_type_context(item->get_type_context());
       }
       /*
         Fields that are used as arguments to the DEFAULT() function already have

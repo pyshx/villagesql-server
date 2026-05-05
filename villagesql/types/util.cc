@@ -1182,7 +1182,10 @@ static bool insert_tmp_metadata_for_thd(THD *thd, const ColumnKey &key,
   }
   if (field != nullptr) {
     const TypeContext *tc = tc_owner.get();
-    field->set_type_context(tc);
+    // The Field already has TC set from make_field() (sql/field.cc when the
+    // Create_field carries custom_type_context); we re-set with the
+    // shared_ptr-owned copy that lives in TmpMetadata.
+    field->update_type_context(tc);
     if (CheckFieldLengthMatchesType(field, tc)) return true;
   }
   if (!thd) return false;
@@ -1597,8 +1600,10 @@ bool InjectCustomSpParams(
       }
 
       // fields[i] can be null for unused variable slots in the var table.
+      // Field already carries TC from SP frame setup; this re-syncs to the
+      // shared_ptr-owned reference held in type_refs.
       if (fields[m.field_idx]) {
-        fields[m.field_idx]->set_type_context(tc_ref.get());
+        fields[m.field_idx]->update_type_context(tc_ref.get());
       }
 
       // Sync TypeContext into the Item wrapper so SP body statements
@@ -1609,7 +1614,7 @@ bool InjectCustomSpParams(
       // TODO(villagesql-ga): Once Item_field delegates set_type_context() to
       // its underlying Field, this call can be dropped for field-backed items.
       if (var_items.array() && var_items[m.field_idx]) {
-        var_items[m.field_idx]->set_type_context(tc_ref.get());
+        var_items[m.field_idx]->update_type_context(tc_ref.get());
       }
 
       // Transfer ownership to caller. sp_rcontext holds these shared_ptrs in

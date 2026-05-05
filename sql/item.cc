@@ -3068,9 +3068,11 @@ void Item_field::set_field(Field *field_par) {
   decimals = field->decimals();
   unsigned_flag = field_par->is_flag_set(UNSIGNED_FLAG);
 
-  // Synchronize custom type context from Field
+  // Synchronize custom type context from Field. set_field is called from
+  // Item_field::fix_fields, which re-runs on the same Item across prepared-
+  // statement re-executions, so this is a re-set rather than a first-set.
   if (field_par->has_type_context()) {
-    this->set_type_context(field_par->get_type_context());
+    this->update_type_context(field_par->get_type_context());
     // VillageSQL: Mark that we found a custom type field during binding
     current_thd->lex->found_custom_type_in_context = true;
   }
