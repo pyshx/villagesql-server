@@ -1349,7 +1349,7 @@ bool ValidateAndConvertVDFArguments(THD *thd, const char *func_name,
           return true;
         }
         if (resolved_tc != nullptr) {
-          args[i]->set_type_context(resolved_tc);
+          args[i]->update_type_context(resolved_tc);
         }
       } else {
         // No known params available for this type. Error.

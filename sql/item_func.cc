@@ -7021,7 +7021,7 @@ bool Item_func_get_user_var::resolve_type(THD *thd) {
     // Override collation for all data types
     collation.set(var_entry->collation);
 
-    set_type_context(var_entry->type_context());
+    update_type_context(var_entry->type_context());
   } else {
     // Unknown user variable, assign expected type from context.
     null_value = true;

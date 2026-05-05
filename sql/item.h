@@ -6977,7 +6977,7 @@ class Item_cache : public Item_basic_constant {
     add_accum_properties(item);
     // VillageSQL: Copy custom type context for proper formatting of custom
     // types
-    set_type_context(item->get_type_context());
+    update_type_context(item->get_type_context());
     if (item->type() == FIELD_ITEM) {
       cached_field = down_cast<Item_field *>(item);
       if (cached_field->table_ref != nullptr)
