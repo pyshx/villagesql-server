@@ -234,6 +234,11 @@ bool Item::may_eval_const_item(const THD *thd) const {
   return !thd->lex->is_view_context_analysis() || basic_const_item();
 }
 
+void Item::set_type_context(const villagesql::TypeContext *tc) {
+  (void)should_assert_if_false(custom_type == nullptr);
+  custom_type = tc;
+}
+
 /**
   @todo
     Make this functions class dependent

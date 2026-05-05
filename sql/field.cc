@@ -89,6 +89,7 @@
 #include "string_with_len.h"
 #include "template_utils.h"  // pointer_cast
 #include "typelib.h"
+#include "villagesql/include/error.h"
 #include "villagesql/types/util.h"
 
 namespace dd {
@@ -1245,6 +1246,11 @@ enum_field_types Field::field_type_merge(enum_field_types a,
 }
 
 void Field::add_to_cost(CostOfItem *cost) const { cost->AddFieldCost(); }
+
+void Field::set_type_context(const villagesql::TypeContext *tc) {
+  (void)should_assert_if_false(custom_type == nullptr);
+  custom_type = tc;
+}
 
 static Item_result field_types_result_type[FIELDTYPE_NUM] = {
     // MYSQL_TYPE_DECIMAL      MYSQL_TYPE_TINY

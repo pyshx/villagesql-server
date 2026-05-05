@@ -3763,7 +3763,7 @@ class Item : public Parse_tree_node {
   virtual const villagesql::TypeContext *get_type_context() const {
     return custom_type;
   }
-  void set_type_context(const villagesql::TypeContext *tc) { custom_type = tc; }
+  void set_type_context(const villagesql::TypeContext *tc);
   void update_type_context(const villagesql::TypeContext *tc) {
     custom_type = tc;
   }
