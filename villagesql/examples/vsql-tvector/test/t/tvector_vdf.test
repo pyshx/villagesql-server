@@ -138,6 +138,26 @@ SELECT vsql_tvector.tvector_add(
 
 ########################################################################
 #
+# Test: TD1 Case 2 (unknown -> known via sibling)
+#
+# tvector_zeros() takes no args, so TD2 cannot fill its return type's
+# parameters from siblings; the inner VDF returns TVECTOR with
+# is_unknown()==true. The outer tvector_add resolves the inner's params
+# from its sibling typed column via TD1 (Case 2 in
+# villagesql/types/util.cc::ValidateAndConvertVDFArguments).
+#
+########################################################################
+
+SELECT vsql_tvector.tvector_add(
+    vsql_tvector.tvector_zeros(),
+    (SELECT v FROM t WHERE id=1)) AS td1_case2_zeros_plus_col;
+
+SELECT vsql_tvector.tvector_add(
+    (SELECT v FROM t WHERE id=2),
+    vsql_tvector.tvector_zeros()) AS td1_case2_col_plus_zeros;
+
+########################################################################
+#
 # Clean up
 #
 ########################################################################

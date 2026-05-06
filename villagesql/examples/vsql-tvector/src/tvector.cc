@@ -362,6 +362,25 @@ void tvector_add(vsql::CustomArgWith<TVectorParams> a,
   out.set_length(byte_size);
 }
 
+// Constant zeros: () -> TVECTOR
+// Returns a zero-valued vector. Takes no arguments, so TD2 cannot fill the
+// return type's parameters from siblings; the caller must supply context that
+// lets TD1 resolve them (e.g. a sibling argument of the same custom type in
+// an enclosing VDF call). Used to exercise the TD1 unknown -> known path
+// where an arg has a TypeContext with is_unknown()==true on entry to
+// ValidateAndConvertVDFArguments (Case 2 in villagesql/types/util.cc).
+void tvector_zeros(villagesql::CustomResultWith<TVectorParams> out) {
+  const TVectorParams &p = out.params();
+  auto buf = out.buffer();
+  size_t byte_size = static_cast<size_t>(p.dimension) * p.bytes_per_elem;
+  if (buf.size() < byte_size) {
+    out.error("tvector_zeros: output buffer too small");
+    return;
+  }
+  memset(buf.data(), 0, byte_size);
+  out.set_length(byte_size);
+}
+
 // Scalar multiply: (TVECTOR, REAL) -> TVECTOR
 void tvector_scale(vsql::CustomArgWith<TVectorParams> a, vsql::RealArg scalar,
                    vsql::CustomResultWith<TVectorParams> out) {
@@ -427,5 +446,9 @@ VEF_GENERATE_ENTRY_POINTS(
                   .returns(TVECTOR)
                   .param(TVECTOR)
                   .param(REAL)
+                  .deterministic()
+                  .build())
+        .func(make_func<&tvector_zeros>("tvector_zeros")
+                  .returns(TVECTOR)
                   .deterministic()
                   .build()))
