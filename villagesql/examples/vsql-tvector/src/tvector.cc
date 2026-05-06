@@ -369,7 +369,7 @@ void tvector_add(vsql::CustomArgWith<TVectorParams> a,
 // an enclosing VDF call). Used to exercise the TD1 unknown -> known path
 // where an arg has a TypeContext with is_unknown()==true on entry to
 // ValidateAndConvertVDFArguments (Case 2 in villagesql/types/util.cc).
-void tvector_zeros(villagesql::CustomResultWith<TVectorParams> out) {
+void tvector_zeros(vsql::CustomResultWith<TVectorParams> out) {
   const TVectorParams &p = out.params();
   auto buf = out.buffer();
   size_t byte_size = static_cast<size_t>(p.dimension) * p.bytes_per_elem;
