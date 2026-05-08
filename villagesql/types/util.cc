@@ -1184,8 +1184,13 @@ static bool insert_tmp_metadata_for_thd(THD *thd, const ColumnKey &key,
     const TypeContext *tc = tc_owner.get();
     // The Field already has TC set from make_field() (sql/field.cc when the
     // Create_field carries custom_type_context); we re-set with the
-    // shared_ptr-owned copy that lives in TmpMetadata.
-    field->update_type_context(tc);
+    // shared_ptr-owned copy that lives in TmpMetadata. Polymorphic on whether
+    // make_field path pre-set the TC.
+    if (field->has_type_context()) {
+      field->update_type_context(tc);
+    } else {
+      field->set_type_context(tc);
+    }
     if (CheckFieldLengthMatchesType(field, tc)) return true;
   }
   if (!thd) return false;
@@ -1352,7 +1357,13 @@ bool ValidateAndConvertVDFArguments(THD *thd, const char *func_name,
           return true;
         }
         if (resolved_tc != nullptr) {
-          args[i]->update_type_context(resolved_tc);
+          // Polymorphic: args[i]->is_unknown() is true, but the Item base may
+          // or may not have an own custom_type set depending on path.
+          if (args[i]->Item::get_type_context() != nullptr) {
+            args[i]->update_type_context(resolved_tc);
+          } else {
+            args[i]->set_type_context(resolved_tc);
+          }
         }
       } else {
         // No known params available for this type. Error.
@@ -1603,7 +1614,11 @@ bool InjectCustomSpParams(
       // Field already carries TC from SP frame setup; this re-syncs to the
       // shared_ptr-owned reference held in type_refs.
       if (fields[m.field_idx]) {
-        fields[m.field_idx]->update_type_context(tc_ref.get());
+        if (fields[m.field_idx]->has_type_context()) {
+          fields[m.field_idx]->update_type_context(tc_ref.get());
+        } else {
+          fields[m.field_idx]->set_type_context(tc_ref.get());
+        }
       }
 
       // Sync TypeContext into the Item wrapper so SP body statements
@@ -1614,7 +1629,11 @@ bool InjectCustomSpParams(
       // TODO(villagesql-ga): Once Item_field delegates set_type_context() to
       // its underlying Field, this call can be dropped for field-backed items.
       if (var_items.array() && var_items[m.field_idx]) {
-        var_items[m.field_idx]->update_type_context(tc_ref.get());
+        if (var_items[m.field_idx]->Item::get_type_context() != nullptr) {
+          var_items[m.field_idx]->update_type_context(tc_ref.get());
+        } else {
+          var_items[m.field_idx]->set_type_context(tc_ref.get());
+        }
       }
 
       // Transfer ownership to caller. sp_rcontext holds these shared_ptrs in

@@ -1902,6 +1902,7 @@ class Field {
   }
   void set_type_context(const villagesql::TypeContext *tc);
   void update_type_context(const villagesql::TypeContext *tc) {
+    assert(custom_type != nullptr);
     custom_type = tc;
   }
   bool has_type_context() const { return nullptr != custom_type; }

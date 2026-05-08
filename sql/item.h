@@ -3765,6 +3765,7 @@ class Item : public Parse_tree_node {
   }
   void set_type_context(const villagesql::TypeContext *tc);
   void update_type_context(const villagesql::TypeContext *tc) {
+    assert(custom_type != nullptr);
     custom_type = tc;
   }
   virtual bool has_type_context() const { return nullptr != custom_type; }
@@ -6976,8 +6977,13 @@ class Item_cache : public Item_basic_constant {
     unsigned_flag = item->unsigned_flag;
     add_accum_properties(item);
     // VillageSQL: Copy custom type context for proper formatting of custom
-    // types
-    update_type_context(item->get_type_context());
+    // types. Polymorphic: fresh-set from singlerow_subselect::create_row,
+    // re-set from window-function arg rebinding (Item_lead_lag).
+    if (this->has_type_context()) {
+      update_type_context(item->get_type_context());
+    } else {
+      set_type_context(item->get_type_context());
+    }
     if (item->type() == FIELD_ITEM) {
       cached_field = down_cast<Item_field *>(item);
       if (cached_field->table_ref != nullptr)

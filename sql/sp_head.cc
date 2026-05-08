@@ -1988,7 +1988,11 @@ Field *sp_head::create_result_field(THD *thd, size_t field_max_length,
   // make_field() already sets TC from m_return_field_def.custom_type_context;
   // this re-sets to the shared_ptr-owned ref kept alive by sp_head.
   if (m_return_type_context_ref) {
-    field->update_type_context(m_return_type_context_ref.get());
+    if (field->has_type_context()) {
+      field->update_type_context(m_return_type_context_ref.get());
+    } else {
+      field->set_type_context(m_return_type_context_ref.get());
+    }
   }
 
   assert(field->pack_length() == m_return_field_def.pack_length());

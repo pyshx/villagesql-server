@@ -3075,9 +3075,16 @@ void Item_field::set_field(Field *field_par) {
 
   // Synchronize custom type context from Field. set_field is called from
   // Item_field::fix_fields, which re-runs on the same Item across prepared-
-  // statement re-executions, so this is a re-set rather than a first-set.
+  // statement re-executions, so this is a re-set on PS re-exec but a fresh
+  // set on first bind. Polymorphic.
   if (field_par->has_type_context()) {
-    this->update_type_context(field_par->get_type_context());
+    // Item_field overrides has_/get_type_context to delegate to field; check
+    // the base Item's own custom_type to decide set vs update.
+    if (this->Item::get_type_context() != nullptr) {
+      this->update_type_context(field_par->get_type_context());
+    } else {
+      this->set_type_context(field_par->get_type_context());
+    }
     // VillageSQL: Mark that we found a custom type field during binding
     current_thd->lex->found_custom_type_in_context = true;
   }
