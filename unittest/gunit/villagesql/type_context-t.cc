@@ -349,4 +349,55 @@ TEST_F(TypeContextTest, DifferentParametersAreNotCompatible) {
   EXPECT_FALSE(v4.is_compatible_with(v3));
 }
 
+TEST_F(TypeContextTest, UnknownIsCompatibleWithKnownOfSameType) {
+  static auto rp_ok_fd =
+      make_resolve_params_fd("rp_ok_refine", &resolve_params_ok_vdf);
+
+  villagesql::TypeDescriptor desc(
+      villagesql::TypeDescriptorKey("VVECTOR", "test_ext", "1.0.0"),
+      VEF_PROTOCOL_2, 1, -1, 0, /*max_persisted_length=*/0,
+      villagesql::EncodeFunction(dummy_encode),
+      villagesql::DecodeFunction(dummy_decode),
+      villagesql::CompareFunction(dummy_compare), std::nullopt, std::nullopt,
+      villagesql::ResolveParamsFunction(&rp_ok_fd));
+  villagesql::TypeContextKey unknown_key("VVECTOR", "test_ext", "1.0.0");
+  villagesql::TypeContextKey known_key(
+      villagesql::TypeDescriptorKey("VVECTOR", "test_ext", "1.0.0"),
+      villagesql::TypeParameters("dimension=3"));
+  villagesql::TypeContext unknown = make_context(unknown_key, &desc);
+  villagesql::TypeContext known = make_context(known_key, &desc);
+  ASSERT_TRUE(unknown.is_unknown());
+  ASSERT_FALSE(known.is_unknown());
+  EXPECT_TRUE(unknown.is_compatible_with(known));
+  EXPECT_TRUE(known.is_compatible_with(unknown));
+}
+
+TEST_F(TypeContextTest, UnknownIsNotCompatibleWithDifferentType) {
+  static auto rp_ok_fd =
+      make_resolve_params_fd("rp_ok_diff_desc", &resolve_params_ok_vdf);
+
+  villagesql::TypeDescriptor vvector_desc(
+      villagesql::TypeDescriptorKey("VVECTOR", "test_ext", "1.0.0"),
+      VEF_PROTOCOL_2, 1, -1, 0, /*max_persisted_length=*/0,
+      villagesql::EncodeFunction(dummy_encode),
+      villagesql::DecodeFunction(dummy_decode),
+      villagesql::CompareFunction(dummy_compare), std::nullopt, std::nullopt,
+      villagesql::ResolveParamsFunction(&rp_ok_fd));
+  villagesql::TypeDescriptor complex_desc(
+      villagesql::TypeDescriptorKey("COMPLEX", "test_ext", "1.0.0"),
+      VEF_PROTOCOL_1, 1, 16, 256, /*max_persisted_length=*/0,
+      villagesql::EncodeFunction(dummy_encode),
+      villagesql::DecodeFunction(dummy_decode),
+      villagesql::CompareFunction(dummy_compare));
+  villagesql::TypeContext unknown_vvector =
+      make_context(villagesql::TypeContextKey("VVECTOR", "test_ext", "1.0.0"),
+                   &vvector_desc);
+  villagesql::TypeContext complex =
+      make_context(villagesql::TypeContextKey("COMPLEX", "test_ext", "1.0.0"),
+                   &complex_desc);
+  ASSERT_TRUE(unknown_vvector.is_unknown());
+  EXPECT_FALSE(unknown_vvector.is_compatible_with(complex));
+  EXPECT_FALSE(complex.is_compatible_with(unknown_vvector));
+}
+
 }  // namespace villagesql_unittest

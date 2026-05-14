@@ -241,10 +241,17 @@ class TypeContext {
     return descriptor_->is_parameterized() && parameters().empty();
   }
 
-  // Types are compatible if they have the same key (type name, extension,
-  // version, and parameters). This ensures e.g. TVECTOR(3) != TVECTOR(4).
+  // Types are compatible when they share a descriptor (type name, extension,
+  // version) and either side may be a not-yet-resolved (unknown-params)
+  // variant, or the parameters match. So TVECTOR(3) and TVECTOR(4) are NOT
+  // compatible; TVECTOR with empty params and TVECTOR(3) ARE compatible (the
+  // unknown can refine to the known — e.g. when an inner VDF returns an
+  // unknown TC that the caller then resolves from a sibling argument's
+  // parameters).
   bool is_compatible_with(const TypeContext &other) const {
-    return key() == other.key();
+    if (!(key().descriptor_key() == other.key().descriptor_key())) return false;
+    return is_unknown() || other.is_unknown() ||
+           parameters() == other.parameters();
   }
 
   // Convenience accessors for frequently used fields
