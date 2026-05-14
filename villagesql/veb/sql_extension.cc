@@ -410,8 +410,8 @@ bool remove_extension_from_victionary(
     villagesql_error(
         "Cannot uninstall extension '%s': installed version is '%s' but "
         "VERSION '%s' was specified",
-        MYF(0), extension_name.c_str(),
-        ext_entry->extension_version.c_str(), expected_version.c_str());
+        MYF(0), extension_name.c_str(), ext_entry->extension_version.c_str(),
+        expected_version.c_str());
     return true;
   }
 
