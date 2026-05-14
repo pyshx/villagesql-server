@@ -389,7 +389,8 @@ bool check_for_sp_params_of_extension(
 //
 // If `expected_version` is non-empty, the installed extension's version must
 // match exactly or uninstall is rejected. Callers pass an empty string when no
-// VERSION clause was specified, preserving pre-#345 behavior.
+// VERSION clause was specified, falling back to whichever version is currently
+// installed.
 bool remove_extension_from_victionary(
     THD *thd, VictionaryClient &victionary, const std::string &extension_name,
     const std::string &expected_version,

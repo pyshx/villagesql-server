@@ -1460,7 +1460,6 @@ void warn_on_deprecated_user_defined_collation(
 // TODO(villagesql-rebase): Check if token number needs updating during MySQL rebase
 %token<lexer.keyword> EXTENSION_SYM              1215  /* VILLAGESQL */
 %token                DOUBLE_COLON               1216  /* VILLAGESQL OPERATOR */
-// TODO(villagesql-rebase): Check if token number needs updating during MySQL rebase
 %token<lexer.keyword> VERSION_SYM                1217  /* VILLAGESQL */
 
 /*
@@ -18319,7 +18318,6 @@ uninstall:
           }
         ;
 
-// TODO(villagesql-rebase): UNINSTALL EXTENSION VERSION clause, check placement during MySQL rebase
 opt_extension_version:
           %empty { $$ = {}; }
         | VERSION_SYM TEXT_STRING_sys { $$ = to_lex_cstring($2); }
