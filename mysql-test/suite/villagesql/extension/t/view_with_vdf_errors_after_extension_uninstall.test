@@ -3,7 +3,7 @@
 # view's in-memory use_count, UNINSTALL EXTENSION succeeds. The view body
 # then carries a dangling VDF reference, which surfaces as ER_VIEW_INVALID
 # at SELECT time -- the same shape as a view that references a now-removed
-# stored function. Pins the at-query error path the #392 discussion settled on.
+# stored function.
 
 --source include/villagesql/install_complex_extension.inc
 

@@ -1,7 +1,6 @@
 # Functional index over a custom-typed column carries a custom_columns
 # dependency on the underlying column. UNINSTALL EXTENSION must be blocked
 # while such a column exists, in both open-cache and cold-cache states.
-# Regression test for the #392 audit's literal ask.
 
 --source include/villagesql/install_complex_extension.inc
 
