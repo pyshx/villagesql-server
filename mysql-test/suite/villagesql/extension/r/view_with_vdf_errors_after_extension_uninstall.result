@@ -2,8 +2,7 @@ CREATE VIEW v AS SELECT vsql_complex.complex_real('(1,2)') AS r;
 SELECT * FROM v;
 r
 1
-# Cold-cache UNINSTALL succeeds: view's in-memory ref is gone.
-FLUSH TABLES;
+# Nothing holds the VDF after the SELECT completes; UNINSTALL succeeds.
 UNINSTALL EXTENSION vsql_complex;
 # View body still references the now-removed VDF; SELECT errors at runtime.
 SELECT * FROM v;
