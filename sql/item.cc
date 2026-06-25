@@ -7091,23 +7091,20 @@ type_conversion_status Item::save_in_field_inner(Field *field,
 type_conversion_status Item_string::save_in_field_inner(Field *field, bool) {
   assert(fixed);
   if (!has_type_context() && field->has_type_context()) {
-    // Treat this Item as if it were a custom type.
-    auto *tc = field->get_type_context();
-    this->set_type_context(tc);
-
-    // Encode str_value into a new representation, based on the type.
+    // Custom type: encode and store the bytes as binary, like
+    // Item::save_in_field_inner. We don't cache the encoded value back on the
+    // constant Item -- that would mutate a shared constant and force a
+    // collation onto binary data.
     bool is_oom = false;
     String *encoded =
         villagesql::EncodeStringForField(field, str_value, is_oom);
     if (encoded == nullptr) {
       return is_oom ? TYPE_ERR_OOM : TYPE_ERR_BAD_VALUE;
     }
-
-    // Now re-cache the new version.
-    // TODO(villagesql-beta): check on the collation settings.
-    fixed = false;
-    init(encoded->ptr(), encoded->length(), &my_charset_bin,
-         collation.derivation, collation.repertoire);
+    // A literal's null_value is never set; kept to mirror the base path.
+    if (null_value) return set_field_to_null(field);
+    field->set_notnull();
+    return field->store(encoded->ptr(), encoded->length(), &my_charset_bin);
   }
   String *result = val_str(&str_value);
   return save_str_value_in_field(field, result);
