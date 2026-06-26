@@ -22,6 +22,7 @@ SET(VILLAGESQL_UNIT_TESTS
   abi_v2_check-t
   custom_indexes-t
   semver-t
+  session_context-t
   type_builder-t
   type_context-t
   type_descriptor-t
