@@ -20,6 +20,8 @@
 #include <villagesql/abi/types.h>
 #include <villagesql/vsql/func_types.h>
 
+#include "villagesql/vdf/session_context.h"
+
 namespace villagesql_unittest {
 
 class SessionContextAbiTest : public ::testing::Test {};
@@ -89,6 +91,17 @@ TEST_F(SessionAccessorTest, EmptyWhenNullPointers) {
   EXPECT_TRUE(s.schema().empty());
   EXPECT_TRUE(s.priv_user().empty());
   EXPECT_TRUE(s.priv_host().empty());
+}
+
+class KillStatusMappingTest : public ::testing::Test {};
+
+TEST_F(KillStatusMappingTest, MapsEachKilledState) {
+  using villagesql::vdf::vef_map_kill_status;
+  EXPECT_EQ(VEF_KILL_NOT_KILLED, vef_map_kill_status(THD::NOT_KILLED));
+  EXPECT_EQ(VEF_KILL_CONNECTION, vef_map_kill_status(THD::KILL_CONNECTION));
+  EXPECT_EQ(VEF_KILL_QUERY, vef_map_kill_status(THD::KILL_QUERY));
+  EXPECT_EQ(VEF_KILL_TIMEOUT, vef_map_kill_status(THD::KILL_TIMEOUT));
+  EXPECT_EQ(VEF_KILL_UNKNOWN, vef_map_kill_status(THD::KILLED_NO_VALUE));
 }
 
 }  // namespace villagesql_unittest
