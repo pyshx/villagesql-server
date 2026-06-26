@@ -599,6 +599,46 @@ struct WrapperVoidStarRefState {
   }
 };
 
+// Detects a leading vsql::Session parameter.
+template <typename T>
+struct is_session_param : std::false_type {};
+template <>
+struct is_session_param<::vsql::Session> : std::true_type {};
+
+// Wraps void(Session, TypedArgs..., ResultWrapper) -> vef_vdf_func_t.
+// The Session view is built from ctx; SQL arguments live at indices
+// [1, NumParams] of the parameter tuple (index 0 is the Session), and the
+// result wrapper is the final parameter. Mirrors WrapperTypedState's shape.
+template <auto Func, size_t NumParams>
+struct WrapperWithSession {
+  static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
+                     vef_vdf_result_t *result) {
+    invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+  }
+
+ private:
+  template <size_t... Is>
+  static void invoke_impl(vef_context_t *ctx, vef_vdf_args_t *args,
+                          vef_vdf_result_t *result,
+                          std::index_sequence<Is...>) {
+    using Params = typename FuncParamTypes<decltype(Func)>::type;
+    std::array<vef_invalue_t, NumParams> vals{
+        get_invalue(ctx, args, static_cast<unsigned int>(Is))...};
+    Func(::vsql::Session(ctx),
+         make_arg<std::tuple_element_t<1 + Is, Params>>(&vals[Is])...,
+         make_result<std::tuple_element_t<NumParams + 1, Params>>(result));
+  }
+
+  template <typename T>
+  static T make_arg(vef_invalue_t *v) {
+    return T(v);
+  }
+  template <typename T>
+  static T make_result(vef_vdf_result_t *r) {
+    return T(r);
+  }
+};
+
 // Pre-fills result->type / result->error_msg with a default
 // "failed to encode '<input>'" warning, truncating long inputs. Both encode
 // wrappers call this before invoking the extension's from_string so that an
