@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include <villagesql/abi/types.h>
+#include <villagesql/vsql/func_types.h>
 
 namespace villagesql_unittest {
 
@@ -45,6 +46,49 @@ TEST_F(SessionContextAbiTest, ContextHoldsTier1Fields) {
   EXPECT_STREQ("root", ctx.priv_user);
   EXPECT_STREQ("localhost", ctx.priv_host);
   EXPECT_EQ(VEF_KILL_QUERY, ctx.kill_status);
+}
+
+class SessionAccessorTest : public ::testing::Test {};
+
+TEST_F(SessionAccessorTest, ReadsFieldsWhenProtocol4) {
+  vef_context_t ctx{};
+  ctx.protocol = VEF_PROTOCOL_4;
+  ctx.schema = "mydb";
+  ctx.connection_id = 7;
+  ctx.priv_user = "root";
+  ctx.priv_host = "localhost";
+  ctx.kill_status = VEF_KILL_TIMEOUT;
+
+  vsql::Session s(&ctx);
+  EXPECT_TRUE(s.available());
+  EXPECT_EQ("mydb", s.schema());
+  EXPECT_EQ(7u, s.connection_id());
+  EXPECT_EQ("root", s.priv_user());
+  EXPECT_EQ("localhost", s.priv_host());
+  EXPECT_EQ(vsql::KillStatus::Timeout, s.kill_status());
+}
+
+TEST_F(SessionAccessorTest, EmptyWhenProtocolBelow4) {
+  vef_context_t ctx{};
+  ctx.protocol = VEF_PROTOCOL_3;
+  ctx.schema = "should_not_leak";
+
+  vsql::Session s(&ctx);
+  EXPECT_FALSE(s.available());
+  EXPECT_TRUE(s.schema().empty());
+  EXPECT_EQ(0u, s.connection_id());
+  EXPECT_EQ(vsql::KillStatus::NotKilled, s.kill_status());
+}
+
+TEST_F(SessionAccessorTest, EmptyWhenNullPointers) {
+  vef_context_t ctx{};
+  ctx.protocol = VEF_PROTOCOL_4;  // bound session, but no schema/identity
+
+  vsql::Session s(&ctx);
+  EXPECT_TRUE(s.available());
+  EXPECT_TRUE(s.schema().empty());
+  EXPECT_TRUE(s.priv_user().empty());
+  EXPECT_TRUE(s.priv_host().empty());
 }
 
 }  // namespace villagesql_unittest
