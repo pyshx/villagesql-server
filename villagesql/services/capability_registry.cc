@@ -23,6 +23,7 @@
 
 #include "villagesql/sdk/include/villagesql/abi/preview/keyring.h"
 #include "villagesql/sdk/include/villagesql/abi/preview/ping.h"
+#include "villagesql/sdk/include/villagesql/abi/preview/session.h"
 #include "villagesql/sdk/include/villagesql/abi/preview/sql_query.h"
 #include "villagesql/sdk/include/villagesql/abi/preview/statement_event.h"
 #include "villagesql/sdk/include/villagesql/abi/preview/status_var.h"
@@ -34,6 +35,7 @@
 #include "villagesql/services/preview/index_type.h"
 #include "villagesql/services/preview/keyring.h"
 #include "villagesql/services/preview/ping.h"
+#include "villagesql/services/preview/session.h"
 #include "villagesql/services/preview/sql_query.h"
 #include "villagesql/services/preview/statement_event.h"
 #include "villagesql/services/preview/status_var.h"
@@ -166,6 +168,9 @@ void register_builtin_capabilities() {
                       {.vtable = preview_index_profile_vtable(),
                        .vtable_hash = "ver-1",
                        .capability_config_hash = "ver-1"});
+  register_capability(
+      VEF_PREVIEW_SESSION_NAME,
+      {.vtable = preview_session_vtable(), .vtable_hash = "ver-1"});
   register_capability(
       VEF_PREVIEW_SQL_QUERY_NAME,
       {.vtable = preview_sql_query_vtable(), .vtable_hash = "ver-1"});
