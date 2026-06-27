@@ -1,0 +1,7 @@
+{
+  "name": "vsql_session_cap_test",
+  "version": "0.0.1",
+  "description": "VillageSQL extension exercising the session preview capability",
+  "author": "VillageSQL Community",
+  "license": "GPL-2.0"
+}

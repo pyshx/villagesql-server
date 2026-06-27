@@ -1,0 +1,8 @@
+# The session capability is a preview capability: install is blocked while
+# vsql_allow_preview_extensions is OFF (the default).
+
+call mtr.add_suppression("vsql_allow_preview_extensions");
+
+--echo # Default OFF: install is rejected
+--error ER_VILLAGESQL_GENERIC_ERROR
+INSTALL EXTENSION vsql_session_cap_test;
