@@ -182,6 +182,15 @@ IF(NOT WITHOUT_SERVER)
     BINARY_BASE ${CMAKE_CURRENT_BINARY_DIR}/examples
     INSTALL_DEST ${INSTALL_VEBDIR}
   )
+  vsql_add_extension(
+    DIR_NAME    vsql-session
+    EXT_TARGET  vsql_session_extension
+    VEB_NAME    vsql_session
+    SOURCE_BASE ${CMAKE_CURRENT_SOURCE_DIR}/examples
+    BINARY_BASE ${CMAKE_CURRENT_BINARY_DIR}/examples
+    INSTALL_DEST      ${INSTALL_VEBDIR}
+    INSTALL_COMPONENT ExampleVebs
+  )
   # Test extensions (share a single CMakeLists.txt template)
   vsql_add_test_extension(vsql-config-vars-test  vsql_config_vars_test)
   vsql_add_test_extension(vsql-slow-query-log    vsql_slow_query_log)

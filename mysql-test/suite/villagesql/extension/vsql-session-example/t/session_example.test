@@ -1,0 +1,18 @@
+# Example extension demonstrating session context (Tier 1 + Tier 2).
+
+SET PERSIST vsql_allow_preview_extensions = ON;
+INSTALL EXTENSION vsql_session;
+
+--echo # who_am_i() reports priv_user@priv_host for the current session
+SELECT vsql_session.who_am_i() = CONCAT(
+         SUBSTRING_INDEX(CURRENT_USER(), '@', 1), '@',
+         SUBSTRING_INDEX(CURRENT_USER(), '@', -1)) AS who_am_i_matches;
+
+--echo # audit_line() begins with the priv_user and echoes the query text
+SELECT vsql_session.audit_line() LIKE
+       CONCAT(SUBSTRING_INDEX(CURRENT_USER(), '@', 1), ': %audit_line%')
+       AS audit_line_ok;
+
+UNINSTALL EXTENSION vsql_session;
+SET PERSIST vsql_allow_preview_extensions = OFF;
+RESET PERSIST vsql_allow_preview_extensions;
