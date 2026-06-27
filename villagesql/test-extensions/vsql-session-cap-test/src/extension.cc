@@ -36,6 +36,8 @@ void sc_query_text(StringResult out) { emit(g_session.query_text(), out); }
 void sc_host_or_ip(StringResult out) { emit(g_session.host_or_ip(), out); }
 void sc_login_user(StringResult out) { emit(g_session.login_user(), out); }
 void sc_active_roles(StringResult out) { emit(g_session.active_roles(), out); }
+void sc_sql_command(StringResult out) { emit(g_session.sql_command(), out); }
+void sc_proxy_user(StringResult out) { emit(g_session.proxy_user(), out); }
 
 void sc_da_status(IntResult out) {
   const auto r = g_session.da_status();
@@ -65,6 +67,14 @@ VEF_GENERATE_ENTRY_POINTS(make_extension()
                                         .build())
                               .func(make_func<&sc_da_status>("da_status")
                                         .returns(INT)
+                                        .no_params()
+                                        .build())
+                              .func(make_func<&sc_sql_command>("sql_command")
+                                        .returns(STRING)
+                                        .no_params()
+                                        .build())
+                              .func(make_func<&sc_proxy_user>("proxy_user")
+                                        .returns(STRING)
                                         .no_params()
                                         .build())
                               .with(g_session))

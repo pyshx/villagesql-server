@@ -30,10 +30,15 @@
 
 namespace vsql::preview_session {
 
-// Calls a string getter, growing the buffer once if the server reports the
-// value did not fit (VEF_SESSION_TRUNCATED with a needed size).
+// Calls a string getter identified by a pointer-to-member of
+// vef_preview_session_t. Guards against a null abi_ or an unset slot in a
+// single place. Grows the buffer once if the server reports
+// VEF_SESSION_TRUNCATED.
 inline SessionCapability::StringResult SessionCapability::call_str(
-    vef_session_get_str_fn fn) const {
+    vef_session_get_str_fn vef_preview_session_t::*field) const {
+  if (abi_ == nullptr) return {Status::ERROR, {}};
+  vef_session_get_str_fn fn = abi_->*field;
+  if (fn == nullptr) return {Status::ERROR, {}};
   std::string value;
   value.resize(256);
   size_t out_len = 0;
@@ -50,39 +55,40 @@ inline SessionCapability::StringResult SessionCapability::call_str(
 }
 
 inline SessionCapability::StringResult SessionCapability::query_text() const {
-  return call_str(abi_->query_text);
+  return call_str(&vef_preview_session_t::query_text);
 }
 inline SessionCapability::StringResult SessionCapability::query_digest() const {
-  return call_str(abi_->query_digest);
+  return call_str(&vef_preview_session_t::query_digest);
 }
 inline SessionCapability::StringResult SessionCapability::host_or_ip() const {
-  return call_str(abi_->host_or_ip);
+  return call_str(&vef_preview_session_t::host_or_ip);
 }
 inline SessionCapability::StringResult SessionCapability::query_charset()
     const {
-  return call_str(abi_->query_charset);
+  return call_str(&vef_preview_session_t::query_charset);
 }
 inline SessionCapability::StringResult SessionCapability::sql_command() const {
-  return call_str(abi_->sql_command);
+  return call_str(&vef_preview_session_t::sql_command);
 }
 inline SessionCapability::StringResult SessionCapability::command() const {
-  return call_str(abi_->command);
+  return call_str(&vef_preview_session_t::command);
 }
 inline SessionCapability::StringResult SessionCapability::login_user() const {
-  return call_str(abi_->login_user);
+  return call_str(&vef_preview_session_t::login_user);
 }
 inline SessionCapability::StringResult SessionCapability::external_user()
     const {
-  return call_str(abi_->external_user);
+  return call_str(&vef_preview_session_t::external_user);
 }
 inline SessionCapability::StringResult SessionCapability::proxy_user() const {
-  return call_str(abi_->proxy_user);
+  return call_str(&vef_preview_session_t::proxy_user);
 }
 inline SessionCapability::StringResult SessionCapability::active_roles() const {
-  return call_str(abi_->active_roles);
+  return call_str(&vef_preview_session_t::active_roles);
 }
 
 inline SessionCapability::U32Result SessionCapability::da_status() const {
+  if (abi_ == nullptr || abi_->da_status == nullptr) return {Status::ERROR, 0};
   uint32_t v = 0;
   vef_session_result_t r = abi_->da_status(&v);
   return {static_cast<Status>(r), (r == VEF_SESSION_OK) ? v : 0u};
