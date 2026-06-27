@@ -21,6 +21,7 @@ SET(VILLAGESQL_UNIT_TESTS
   abi_v2_check-t
   custom_indexes-t
   semver-t
+  session_capability-t
   session_context-t
   type_builder-t
   type_context-t
@@ -70,6 +71,7 @@ ADD_VILLAGESQL_TEST(abi_v1_check-t)
 ADD_VILLAGESQL_TEST(abi_v2_check-t)
 ADD_VILLAGESQL_TEST(custom_indexes-t)
 ADD_VILLAGESQL_TEST(semver-t)
+ADD_VILLAGESQL_TEST(session_capability-t)
 ADD_VILLAGESQL_TEST(session_context-t)
 ADD_VILLAGESQL_TEST(type_builder-t)
 ADD_VILLAGESQL_TEST(type_context-t)
