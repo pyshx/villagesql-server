@@ -109,10 +109,14 @@ vef_session_result_t get_thd_owned_string(const char *name, char *buf,
         if (sbytes->get_byte_length(h, &blen)) {
           result = VEF_SESSION_ERROR;
         } else {
+          // TODO(villagesql-preview): tmp is sized from the source byte length;
+          // a charset wider in utf8mb4 could need more bytes and truncate here.
           std::string tmp(static_cast<size_t>(blen) + 1, '\0');
           if (sconv->convert_to_buffer(h, tmp.data(), tmp.size(), "utf8mb4")) {
             result = VEF_SESSION_ERROR;
           } else {
+            // TODO(villagesql-preview): strlen stops at the first embedded NUL,
+            // which would silently truncate a value containing one.
             result = copy_utf8(buf, buf_len, tmp.data(),
                                std::strlen(tmp.data()), out_len);
           }

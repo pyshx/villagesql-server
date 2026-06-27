@@ -71,7 +71,8 @@ class SessionCapability
   template <typename Capability>
   friend struct ::vsql::detail::CapabilityTraits;
 
-  StringResult call_str(vef_session_get_str_fn fn) const;
+  StringResult call_str(
+      vef_session_get_str_fn vef_preview_session_t::*field) const;
 
   const vef_preview_session_t *abi_ = nullptr;
 };

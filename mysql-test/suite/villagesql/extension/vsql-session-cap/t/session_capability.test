@@ -19,6 +19,13 @@ SELECT vsql_session_cap_test.active_roles() AS active_roles;
 --echo # da_status returns an integer bitmask (non-null)
 SELECT vsql_session_cap_test.da_status() IS NOT NULL AS da_status_present;
 
+--echo # sql_command is non-empty (covers get_thd_cstring path)
+SELECT LENGTH(vsql_session_cap_test.sql_command()) > 0 AS sql_command_present;
+SELECT vsql_session_cap_test.sql_command() AS sql_command_value;
+
+--echo # proxy_user on a plain MTR connection (no proxy configured)
+SELECT vsql_session_cap_test.proxy_user() AS proxy_user_value;
+
 UNINSTALL EXTENSION vsql_session_cap_test;
 SET PERSIST vsql_allow_preview_extensions = OFF;
 RESET PERSIST vsql_allow_preview_extensions;
