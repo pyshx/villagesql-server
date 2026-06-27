@@ -1,0 +1,24 @@
+# vsql::preview::session capability getters.
+
+SET PERSIST vsql_allow_preview_extensions = ON;
+INSTALL EXTENSION vsql_session_cap_test;
+
+--echo # login_user matches CURRENT_USER's user part
+SELECT vsql_session_cap_test.login_user() =
+       SUBSTRING_INDEX(CURRENT_USER(), '@', 1) AS login_user_matches;
+
+--echo # query_text reflects the running statement (contains the function name)
+SELECT vsql_session_cap_test.query_text() LIKE '%query_text%' AS query_text_ok;
+
+--echo # host_or_ip is non-empty for a connected session
+SELECT LENGTH(vsql_session_cap_test.host_or_ip()) > 0 AS host_or_ip_present;
+
+--echo # active_roles is NONE when no role is active
+SELECT vsql_session_cap_test.active_roles() AS active_roles;
+
+--echo # da_status returns an integer bitmask (non-null)
+SELECT vsql_session_cap_test.da_status() IS NOT NULL AS da_status_present;
+
+UNINSTALL EXTENSION vsql_session_cap_test;
+SET PERSIST vsql_allow_preview_extensions = OFF;
+RESET PERSIST vsql_allow_preview_extensions;
