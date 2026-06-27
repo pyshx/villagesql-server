@@ -76,8 +76,7 @@ void vdf_handler::refresh_session_context() {
   m_context.priv_user = sctx->priv_user().str;
   m_context.priv_host = sctx->priv_host().str;
 
-  m_context.kill_status =
-      villagesql::vdf::vef_map_kill_status(thd->killed.load());
+  m_context.kill_status = vef_map_kill_status(thd->killed.load());
 }
 
 bool vdf_handler::fix_fields(THD *thd [[maybe_unused]],

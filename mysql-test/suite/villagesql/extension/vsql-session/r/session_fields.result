@@ -9,6 +9,11 @@ SELECT vsql_session_test.session_priv_user() =
 SUBSTRING_INDEX(CURRENT_USER(), '@', 1) AS priv_user_matches;
 priv_user_matches
 1
+# priv_host matches CURRENT_USER's host part
+SELECT vsql_session_test.session_priv_host() =
+SUBSTRING_INDEX(CURRENT_USER(), '@', -1) AS priv_host_matches;
+priv_host_matches
+1
 # kill_status is NOT_KILLED (0) during normal execution
 SELECT vsql_session_test.session_kill_status() AS kill_status;
 kill_status

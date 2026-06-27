@@ -10,6 +10,10 @@ SELECT vsql_session_test.session_conn_id() = CONNECTION_ID() AS conn_id_matches;
 SELECT vsql_session_test.session_priv_user() =
        SUBSTRING_INDEX(CURRENT_USER(), '@', 1) AS priv_user_matches;
 
+--echo # priv_host matches CURRENT_USER's host part
+SELECT vsql_session_test.session_priv_host() =
+       SUBSTRING_INDEX(CURRENT_USER(), '@', -1) AS priv_host_matches;
+
 --echo # kill_status is NOT_KILLED (0) during normal execution
 SELECT vsql_session_test.session_kill_status() AS kill_status;
 
