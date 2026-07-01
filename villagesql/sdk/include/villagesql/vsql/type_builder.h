@@ -231,7 +231,9 @@ class TypeBuilder {
     TypeBuilderState s = state_;
     s.desc.vef_desc.int_to_params_vdf_name = vdf_name;
     require_atleast_min(s.desc.vef_desc.protocol, VEF_PROTOCOL_3);
-    auto new_embedded = std::tuple_cat(embedded_funcs_, std::make_tuple(inner));
+    auto new_embedded = std::tuple_cat(
+        embedded_funcs_,
+        std::make_tuple(detail::make_embedded_func(inner, false)));
     return TypeBuilder<HasFromString, HasToString, HasCompare, ParamsType, true,
                        HasResolveParams, HasMaxPersistedLength,
                        HasVariableLength, decltype(new_embedded), Name>{
@@ -257,7 +259,9 @@ class TypeBuilder {
     TypeBuilderState s = state_;
     s.desc.vef_desc.resolve_params_vdf_name = vdf_name;
     require_atleast_min(s.desc.vef_desc.protocol, VEF_PROTOCOL_3);
-    auto new_embedded = std::tuple_cat(embedded_funcs_, std::make_tuple(inner));
+    auto new_embedded = std::tuple_cat(
+        embedded_funcs_,
+        std::make_tuple(detail::make_embedded_func(inner, false)));
     return TypeBuilder<HasFromString, HasToString, HasCompare, ParamsType,
                        HasIntToParams, true, HasMaxPersistedLength,
                        HasVariableLength, decltype(new_embedded), Name>{
@@ -289,7 +293,9 @@ class TypeBuilder {
     TypeBuilderState s = state_;
     s.desc.vef_desc.encode_vdf_name = vdf_name;
     require_atleast_min(s.desc.vef_desc.protocol, VEF_PROTOCOL_3);
-    auto new_embedded = std::tuple_cat(embedded_funcs_, std::make_tuple(inner));
+    auto new_embedded = std::tuple_cat(
+        embedded_funcs_,
+        std::make_tuple(detail::make_embedded_func(inner, true)));
     return TypeBuilder<true, HasToString, HasCompare, ParamsType,
                        HasIntToParams, HasResolveParams, HasMaxPersistedLength,
                        HasVariableLength, decltype(new_embedded), Name>{
@@ -313,7 +319,9 @@ class TypeBuilder {
     TypeBuilderState s = state_;
     s.desc.vef_desc.decode_vdf_name = vdf_name;
     require_atleast_min(s.desc.vef_desc.protocol, VEF_PROTOCOL_3);
-    auto new_embedded = std::tuple_cat(embedded_funcs_, std::make_tuple(inner));
+    auto new_embedded = std::tuple_cat(
+        embedded_funcs_,
+        std::make_tuple(detail::make_embedded_func(inner, true)));
     return TypeBuilder<HasFromString, true, HasCompare, ParamsType,
                        HasIntToParams, HasResolveParams, HasMaxPersistedLength,
                        HasVariableLength, decltype(new_embedded), Name>{
@@ -337,7 +345,9 @@ class TypeBuilder {
     TypeBuilderState s = state_;
     s.desc.vef_desc.compare_vdf_name = vdf_name;
     require_atleast_min(s.desc.vef_desc.protocol, VEF_PROTOCOL_3);
-    auto new_embedded = std::tuple_cat(embedded_funcs_, std::make_tuple(inner));
+    auto new_embedded = std::tuple_cat(
+        embedded_funcs_,
+        std::make_tuple(detail::make_embedded_func(inner, false)));
     return TypeBuilder<HasFromString, HasToString, true, ParamsType,
                        HasIntToParams, HasResolveParams, HasMaxPersistedLength,
                        HasVariableLength, decltype(new_embedded), Name>{
@@ -360,7 +370,9 @@ class TypeBuilder {
     TypeBuilderState s = state_;
     s.desc.vef_desc.hash_vdf_name = vdf_name;
     require_atleast_min(s.desc.vef_desc.protocol, VEF_PROTOCOL_3);
-    auto new_embedded = std::tuple_cat(embedded_funcs_, std::make_tuple(inner));
+    auto new_embedded = std::tuple_cat(
+        embedded_funcs_,
+        std::make_tuple(detail::make_embedded_func(inner, false)));
     return TypeBuilder<HasFromString, HasToString, HasCompare, ParamsType,
                        HasIntToParams, HasResolveParams, HasMaxPersistedLength,
                        HasVariableLength, decltype(new_embedded), Name>{

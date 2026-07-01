@@ -1054,6 +1054,7 @@ struct StaticFuncDesc {
   }
   constexpr size_t buffer_size() const { return buffer_size_; }
   constexpr bool deterministic() const { return deterministic_; }
+  constexpr bool sql_callable() const { return true; }
   constexpr auto check_params_cache_bound() const -> bool (*)() {
     return check_params_cache_bound_;
   }
