@@ -1,0 +1,25 @@
+# Test opt-in numeric promotion for COMPLEX2 aggregates.
+
+--source include/villagesql/install_complex_extension.inc
+
+CREATE TABLE t_complex2 (
+  id INT PRIMARY KEY,
+  val vsql_complex.COMPLEX2
+);
+
+INSERT INTO t_complex2 VALUES
+  (1, '(3,4)'),
+  (2, '(0,5)'),
+  (3, '(8,15)'),
+  (4, NULL);
+
+SELECT COMPLEX2::numeric_value(val) AS magnitude
+FROM t_complex2
+ORDER BY id;
+
+SELECT SUM(val) AS total, AVG(val) AS avg_val
+FROM t_complex2;
+
+DROP TABLE t_complex2;
+
+--source include/villagesql/uninstall_complex_extension.inc

@@ -192,6 +192,10 @@ extern void AppendFullyQualifiedName(const TypeContext &tc, String *out);
 // registered for this type (binary hash is safe in that case).
 extern std::optional<size_t> TryComputeHash(const TypeContext &tc,
                                             const uchar *data, size_t len);
+extern bool HasNumericValue(const TypeContext &tc);
+extern std::optional<double> TryComputeNumericValue(const TypeContext &tc,
+                                                    const uchar *data,
+                                                    size_t len);
 
 template <typename T>
 inline std::optional<size_t> TryComputeHash(const T &obj, const uchar *data,

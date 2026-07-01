@@ -367,6 +367,32 @@ class TypeBuilder {
         s, new_embedded};
   }
 
+  template <auto Func>
+  constexpr auto numeric_value() const {
+    using namespace detail;
+    using OpP =
+        typename func_builder::detail::TypeOpParamsType<decltype(Func)>::type;
+    static_assert(
+        std::is_same_v<OpP, ParamsType>,
+        "vsql::TypeBuilder::numeric_value(): function params type is "
+        "inconsistent with the declared params type — if the type uses "
+        ".params<P>(), numeric_value must use "
+        "TypeNumericValueWithParamsFunc<P>; otherwise use "
+        "TypeNumericValueFunc");
+    constexpr const char *vdf_name =
+        kTypeOpVdfName<Name, TypeOp::kNumericValue>.buf;
+    auto inner = func_builder::make_type_numeric_value<Func>(
+        vdf_name, state_.desc.vef_desc.name);
+    TypeBuilderState s = state_;
+    s.desc.vef_desc.numeric_value_vdf_name = vdf_name;
+    require_atleast_min(s.desc.vef_desc.protocol, VEF_PROTOCOL_4);
+    auto new_embedded = std::tuple_cat(embedded_funcs_, std::make_tuple(inner));
+    return TypeBuilder<HasFromString, HasToString, HasCompare, ParamsType,
+                       HasIntToParams, HasResolveParams, HasMaxPersistedLength,
+                       HasVariableLength, decltype(new_embedded), Name>{
+        s, new_embedded};
+  }
+
   // intrinsic_default_str: literal string representation of the default value
   // for NOT NULL columns receiving NULL with IGNORE (e.g., "0" for an integer
   // type). The server encodes it via the type's from_string VDF at first use of
