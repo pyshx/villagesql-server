@@ -7093,7 +7093,7 @@ type_conversion_status Item_string::save_in_field_inner(Field *field, bool) {
   if (!has_type_context() && field->has_type_context()) {
     // Custom type: encode and store the bytes as binary, like
     // Item::save_in_field_inner.
-    // TODO(villagesql-performance): cache encoded values as appropriate,
+    // TODO(villagesql-performance): #744 cache encoded values as appropriate,
     // perhaps with the Field's TypeEncoder.
     bool is_oom = false;
     String *encoded =
