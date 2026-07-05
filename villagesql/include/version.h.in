@@ -22,6 +22,7 @@
 
 #include "villagesql/include/semver.h"
 
+#define VSQL_CODE_BASE              "@VSQL_CODE_BASE@"
 #define VSQL_MAJOR_VERSION          @VSQL_MAJOR_VERSION@
 #define VSQL_MINOR_VERSION          @VSQL_MINOR_VERSION@
 #define VSQL_PATCH_VERSION          @VSQL_PATCH_VERSION@
@@ -38,11 +39,10 @@ inline Semver GetBuildVersion() {
   if (std::string_view(VSQL_PRE_RELEASE_VERSION).size() > 0) {
     prerelease.push_back(VSQL_PRE_RELEASE_VERSION);
   }
-  return Semver::from_components(
-    VSQL_MAJOR_VERSION,
-    VSQL_MINOR_VERSION,
-    VSQL_PATCH_VERSION,
-    prerelease);
+  Semver v;
+  v.from_components(VSQL_MAJOR_VERSION, VSQL_MINOR_VERSION,
+                    VSQL_PATCH_VERSION,  VSQL_CODE_BASE, prerelease);
+  return v;
 }
 
 }  // namespace villagesql
