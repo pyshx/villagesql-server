@@ -7092,17 +7092,15 @@ type_conversion_status Item_string::save_in_field_inner(Field *field, bool) {
   assert(fixed);
   if (!has_type_context() && field->has_type_context()) {
     // Custom type: encode and store the bytes as binary, like
-    // Item::save_in_field_inner. We don't cache the encoded value back on the
-    // constant Item -- that would mutate a shared constant and force a
-    // collation onto binary data.
+    // Item::save_in_field_inner.
+    // TODO(villagesql-performance): cache encoded values as appropriate,
+    // perhaps with the Field's TypeEncoder.
     bool is_oom = false;
     String *encoded =
         villagesql::EncodeStringForField(field, str_value, is_oom);
     if (encoded == nullptr) {
       return is_oom ? TYPE_ERR_OOM : TYPE_ERR_BAD_VALUE;
     }
-    // A literal's null_value is never set; kept to mirror the base path.
-    if (null_value) return set_field_to_null(field);
     field->set_notnull();
     return field->store(encoded->ptr(), encoded->length(), &my_charset_bin);
   }
