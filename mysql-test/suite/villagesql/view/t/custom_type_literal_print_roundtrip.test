@@ -1,0 +1,39 @@
+# A custom-type string literal is rewritten to its binary form in place during
+# comparison / CASE / IN resolution. Item_string::print must decode it back so
+# that printed SQL (SHOW WARNINGS, and view/constraint definitions stored as
+# text in the data dictionary) round-trips as the original text.
+
+--source include/villagesql/install_complex_extension.inc
+
+CREATE TABLE t (id INT PRIMARY KEY, val COMPLEX);
+INSERT INTO t VALUES (1, '(2,0)'), (2, '(10,0)'), (3, '(-1,0)');
+
+--echo # The rewritten query keeps the literal as text, not raw binary.
+--replace_column 1 X 2 X 3 X 4 X 5 X 6 X 7 X 8 X 9 X 10 X 11 X
+EXPLAIN SELECT id FROM t WHERE val = '(2,0)';
+SHOW WARNINGS;
+
+--echo # A view stores its body as text; the decoded literal must survive
+--echo # storage and re-open (FLUSH TABLES forces a reparse of the stored text).
+CREATE VIEW v_where AS SELECT id FROM t WHERE val = '(2,0)';
+CREATE VIEW v_case AS
+SELECT id, CASE WHEN val = '(2,0)' THEN 'a' ELSE 'b' END AS c FROM t;
+CREATE VIEW v_in AS SELECT id FROM t WHERE val IN ('(2,0)', '(10,0)');
+SHOW CREATE VIEW v_where;
+SHOW CREATE VIEW v_case;
+SHOW CREATE VIEW v_in;
+FLUSH TABLES;
+SELECT * FROM v_where ORDER BY id;
+SELECT * FROM v_case ORDER BY id;
+SELECT * FROM v_in ORDER BY id;
+DROP VIEW v_where, v_case, v_in;
+
+--echo # A CHECK constraint is captured before the literal is mutated, so it is
+--echo # stored with a charset introducer rather than via the decode path.
+CREATE TABLE tc (id INT, val COMPLEX, CONSTRAINT c1 CHECK (val = '(0,0)'));
+SHOW CREATE TABLE tc;
+DROP TABLE tc;
+
+DROP TABLE t;
+
+--source include/villagesql/uninstall_complex_extension.inc

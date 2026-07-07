@@ -1,0 +1,52 @@
+CREATE TABLE t (id INT PRIMARY KEY, val COMPLEX);
+INSERT INTO t VALUES (1, '(2,0)'), (2, '(10,0)'), (3, '(-1,0)');
+# The rewritten query keeps the literal as text, not raw binary.
+EXPLAIN SELECT id FROM t WHERE val = '(2,0)';
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+X	X	X	X	X	X	X	X	X	X	X	Using where
+Warnings:
+X	X	X
+SHOW WARNINGS;
+Level	Code	Message
+Note	1003	/* select#1 */ select `test`.`t`.`id` AS `id` from `test`.`t` where (`test`.`t`.`val` = '(2,0)')
+# A view stores its body as text; the decoded literal must survive
+# storage and re-open (FLUSH TABLES forces a reparse of the stored text).
+CREATE VIEW v_where AS SELECT id FROM t WHERE val = '(2,0)';
+CREATE VIEW v_case AS
+SELECT id, CASE WHEN val = '(2,0)' THEN 'a' ELSE 'b' END AS c FROM t;
+CREATE VIEW v_in AS SELECT id FROM t WHERE val IN ('(2,0)', '(10,0)');
+SHOW CREATE VIEW v_where;
+View	Create View	character_set_client	collation_connection
+v_where	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_where` AS select `t`.`id` AS `id` from `t` where (`t`.`val` = '(2,0)')	utf8mb4	utf8mb4_0900_ai_ci
+SHOW CREATE VIEW v_case;
+View	Create View	character_set_client	collation_connection
+v_case	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_case` AS select `t`.`id` AS `id`,(case when (`t`.`val` = '(2,0)') then 'a' else 'b' end) AS `c` from `t`	utf8mb4	utf8mb4_0900_ai_ci
+SHOW CREATE VIEW v_in;
+View	Create View	character_set_client	collation_connection
+v_in	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_in` AS select `t`.`id` AS `id` from `t` where (`t`.`val` in ('(2,0)','(10,0)'))	utf8mb4	utf8mb4_0900_ai_ci
+FLUSH TABLES;
+SELECT * FROM v_where ORDER BY id;
+id
+1
+SELECT * FROM v_case ORDER BY id;
+id	c
+1	a
+2	b
+3	b
+SELECT * FROM v_in ORDER BY id;
+id
+1
+2
+DROP VIEW v_where, v_case, v_in;
+# A CHECK constraint is captured before the literal is mutated, so it is
+# stored with a charset introducer rather than via the decode path.
+CREATE TABLE tc (id INT, val COMPLEX, CONSTRAINT c1 CHECK (val = '(0,0)'));
+SHOW CREATE TABLE tc;
+Table	Create Table
+tc	CREATE TABLE `tc` (
+  `id` int DEFAULT NULL,
+  `val` vsql_complex.COMPLEX DEFAULT NULL,
+  CONSTRAINT `c1` CHECK ((`val` = _utf8mb4'(0,0)'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+DROP TABLE tc;
+DROP TABLE t;
