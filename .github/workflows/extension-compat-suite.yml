@@ -106,19 +106,21 @@ jobs:
           path: source
           ref: ${{ inputs.ref }}
 
-      - name: Install dependencies (Linux)
-        if: matrix.os == 'linux'
-        run: sudo source/scripts/setup_linux_build_env.sh
-
-      - name: Install dependencies (macOS)
-        if: matrix.os == 'macos'
-        run: brew install bison cmake openssl
-
-      - name: Cache Boost
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Setup VillageSQL build environment
+        uses: ./source/.github/actions/setup-villagesql-build
         with:
-          path: /tmp/boost
-          key: boost-${{ runner.os }}-${{ runner.arch }}
+          cache-boost: 'true'
+          setup-ccache: 'false'
+
+      - name: Build server and SDK delegate
+        uses: ./source/.github/workflows/build-server-branch.yml
+        with:
+          ref: ${{ inputs.ref }}
+          runner: ${{ toJSON(matrix.runner) }}
+          os: ${{ 'linux' }}
+          platform: ${{ inputs.platform_filter }}
+          release_build: ${{ false }}
+          bundled_extensions: ${{ false }}
 
       - name: Build server and SDK
         run: |
@@ -283,6 +285,25 @@ jobs:
     if: always() && inputs.slack_notify != 'false'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout scripts
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          sparse-checkout: scripts/
+      - name: Download results
+        # Don't fail the comment if no results exist (e.g. server build failed
+        # so no test-extension jobs ran) — the script reports that case.
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: extresult-*
+          path: extresults/
+          merge-multiple: true
+      - name: Build results list
+        id: results
+        run: |
+          LIST=$(./scripts/ci_helpers/villagesql_ext_slack_summary.sh extresults | jq -Rs .)
+          echo "list=$LIST" >> "$GITHUB_OUTPUT"
       - name: Compute overall status
         id: status
         run: |
@@ -313,6 +334,7 @@ jobs:
               "attachments": [
                 {
                   "color": "${{ steps.status.outputs.color }}",
+                  "text":  ${{ steps.results.outputs.list }},
                   "fields": [
                     {
                       "title": "Run",

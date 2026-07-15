@@ -32,15 +32,16 @@ jobs:
 
     - name: Build VillageSQL
       working-directory: ./source
-      run: ./scripts/build-ci.sh
+      run: ./villagesql/bld_tools/build_ci.sh
       env:
+        BUILD_TYPE: debug
         PARALLEL_JOBS: 16
         CMAKE_EXTRA_FLAGS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
     - name: Show ccache statistics
       run: ccache -s
 
-    - name: Run tests
+    - name: Run standard tests (unit, integration with only suite village)
       uses: ./source/.github/actions/run-tests
       with:
         artifact-name: nightly-test-logs-${{ github.run_number }}
