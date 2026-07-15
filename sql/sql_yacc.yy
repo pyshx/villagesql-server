@@ -2416,6 +2416,7 @@ simple_statement_or_begin:
 simple_statement:
           alter_database_stmt           { $$= nullptr; }
         | alter_event_stmt              { $$= nullptr; }
+        | alter_extension_stmt          { $$= nullptr; }
         | alter_function_stmt           { $$= nullptr; }
         | alter_instance_stmt
         | alter_logfile_stmt            { $$= nullptr; }
@@ -7120,25 +7121,35 @@ type:
           {
             $$= NEW_PTN PT_json_type(@$);
           }
-        | IDENT_sys opt_field_length
+        | IDENT_sys %prec PREFER_PARENTHESES
           {
-            // Custom data type, potentially - we will find out when constructing.
-            $$= villagesql::PT_custom_type::create(YYMEM_ROOT, @$, Lex->thd, {}, $1, $2);
+            // Custom data type with no length or parameters: TYPE
+            $$= villagesql::PT_custom_type::create(YYMEM_ROOT, @$, Lex->thd, {}, $1);
           }
-        | IDENT_sys '.' IDENT_sys opt_field_length
+        | IDENT_sys field_length
+          {
+            // Custom type with an integer length: TYPE(N)
+            $$= villagesql::PT_custom_type::create_with_length(YYMEM_ROOT, @$, Lex->thd, {}, $1, $2);
+          }
+        | IDENT_sys '.' IDENT_sys %prec PREFER_PARENTHESES
           {
             // Qualified custom type: extension_name.type_name
-            $$= villagesql::PT_custom_type::create(YYMEM_ROOT, @$, Lex->thd, $1, $3, $4);
+            $$= villagesql::PT_custom_type::create(YYMEM_ROOT, @$, Lex->thd, $1, $3);
+          }
+        | IDENT_sys '.' IDENT_sys field_length
+          {
+            // Qualified custom type with an integer length: extension_name.type_name(N)
+            $$= villagesql::PT_custom_type::create_with_length(YYMEM_ROOT, @$, Lex->thd, $1, $3, $4);
           }
         | IDENT_sys '(' TEXT_STRING_literal ')'
           {
             // Custom type with string parameters: TYPE('key=value,...')
-            $$= villagesql::PT_custom_type::create(YYMEM_ROOT, @$, Lex->thd, {}, $1, nullptr, $3.str, $3.length);
+            $$= villagesql::PT_custom_type::create_with_params(YYMEM_ROOT, @$, Lex->thd, {}, $1, $3.str, $3.length);
           }
         | IDENT_sys '.' IDENT_sys '(' TEXT_STRING_literal ')'
           {
             // Qualified custom type with string parameters
-            $$= villagesql::PT_custom_type::create(YYMEM_ROOT, @$, Lex->thd, $1, $3, nullptr, $5.str, $5.length);
+            $$= villagesql::PT_custom_type::create_with_params(YYMEM_ROOT, @$, Lex->thd, $1, $3, $5.str, $5.length);
           }
         ;
 
@@ -18293,6 +18304,18 @@ install_stmt:
         | INSTALL_SYM COMPONENT_SYM TEXT_STRING_sys_list opt_install_set_value_list
           {
             $$ = NEW_PTN PT_install_component(@$, YYTHD, $3, $4);
+          }
+        ;
+
+// TODO(villagesql-rebase): ALTER EXTENSION grammar rule, check placement during MySQL rebase
+alter_extension_stmt:
+          ALTER EXTENSION_SYM IDENT_sys VERSION_SYM TEXT_STRING_sys AT_SYM RESTART_SYM
+          {
+            LEX *lex= Lex;
+            lex->sql_command= SQLCOM_INSTALL_EXTENSION;
+            lex->m_sql_cmd= new (YYMEM_ROOT) Sql_cmd_install_extension(
+                to_lex_cstring($3), to_lex_cstring($5),
+                /*update_version=*/true, /*at_restart=*/true);
           }
         ;
 

@@ -150,11 +150,7 @@ extern "C" int vef_storage_segment_create(
   vef_storage_page_num_t root_page_num = block->get_page_no();
   *root_page_num_p = root_page_num;
 
-  // Set page type
   unsigned char *page_data = buf_block_get_frame(block);
-  mlog_write_ulint(page_data + FIL_PAGE_TYPE, FIL_PAGE_TYPE_BLOB, MLOG_2BYTES,
-                   &mtr);
-
   // Write number of segments
   num_allocated = 1;
   mlog_write_ulint(page_data + VEF_STORAGE_PAGE_HEADER_SIZE, num_allocated,
@@ -212,9 +208,15 @@ static int vef_drop_one_segment(vef_storage_space_ref_t space_ref,
   unsigned char *page_data = buf_block_get_frame(*root_block_p);
   unsigned char *seg_header = page_data + seg_offset;
 
-  // Free all pages except the segment header. Commit and restart the mtr
-  // between steps, reloading the root page each time.
-  while (!fseg_free_step_not_header(seg_header, false, mtr)) {
+  auto free_step = [&]() {
+    // Free all pages except the segment header for first segment holding the
+    // root page.
+    return (seg_no == 0) ? fseg_free_step_not_header(seg_header, false, mtr)
+                         : fseg_free_step(seg_header, false, mtr);
+  };
+
+  while (!free_step()) {
+    // Commit and restart mtr between steps, reloading the root page each time.
     mtr->commit();
     log_free_check();
     mtr->start();
@@ -234,7 +236,8 @@ static int vef_drop_one_segment(vef_storage_space_ref_t space_ref,
   }
 
   // Free the segment header
-  while (!fseg_free_step(seg_header, false, mtr));
+  if (seg_no == 0)
+    while (!fseg_free_step(seg_header, false, mtr));
 
   return VEF_STORAGE_SUCCESS;
 }
@@ -371,8 +374,15 @@ extern "C" int vef_storage_page_allocate_and_load(
 
   mtr_t *mtr = static_cast<mtr_t *>(mtr_ref);
 
-  buf_block_t *buf_block =
-      fseg_alloc_free_page(segment_header, 0, FSP_NO_DIR, mtr);
+  // Allocate in a separate redo-logged mtr, latching/initializing the page in
+  // the caller's content mtr, so allocation is crash-recoverable even when the
+  // contents are written no-redo. Mirrors Page_load::init in btr0load.cc.
+  mtr_t alloc_mtr;
+  alloc_mtr.start();
+  buf_block_t *buf_block = fseg_alloc_free_page_general(
+      segment_header, 0, FSP_NO_DIR, false, &alloc_mtr, mtr);
+  alloc_mtr.commit();
+
   if (buf_block == nullptr) {
     ib::warn(ER_VILLAGESQL_GENERIC_MESSAGE)
         << "InnoDB: Failed to allocate page.";

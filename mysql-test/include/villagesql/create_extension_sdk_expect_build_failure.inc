@@ -28,8 +28,11 @@ if (!$extension_version)
 }
 
 --let $build_dir = `SELECT @@basedir`
---let $sdk_version = `SELECT @@villagesql_server_version`
---let $sdk_dir = $build_dir/villagesql-extension-sdk-$sdk_version
+# @@villagesql_server_version includes the code base as a prefix, separated
+# from the abbreviated version by an underscore (e.g. "mysql-8.4_0.0.5").
+# The SDK directory name uses the abbreviated version.
+--let $sdk_abbr = `SELECT SUBSTRING_INDEX(@@villagesql_server_version, '_', -1)`
+--let $sdk_dir = $build_dir/villagesql-extension-sdk-$sdk_abbr
 --let $ext_build_dir = $MYSQLTEST_VARDIR/tmp/ext_build_$extension_name
 
 --exec test -d "$sdk_dir" || (echo "ERROR: SDK not found at $sdk_dir. Run 'make sdk' first." && exit 1)
@@ -39,6 +42,13 @@ if (!$extension_version)
 --exec mkdir -p $ext_build_dir/build
 
 --exec cp $extension_source $ext_build_dir/src/extension.cc
+
+# Optionally place a shared companion header next to extension.cc so the source
+# can #include it.
+if ($extension_common_header)
+{
+  --exec cp $extension_common_header $ext_build_dir/src/
+}
 
 --exec printf '%s' '{"name": "$extension_name", "version": "$extension_version"}' > $ext_build_dir/manifest.json
 
@@ -69,4 +79,5 @@ if ($build_failure_grep)
 --let $extension_name =
 --let $extension_version =
 --let $extension_source =
+--let $extension_common_header =
 --let $build_failure_grep =

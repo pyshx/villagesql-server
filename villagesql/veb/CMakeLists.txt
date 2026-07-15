@@ -17,6 +17,7 @@ SET(VILLAGESQL_VEB_SOURCES
   extension_uninstall_checks.cc
   register.cc
   sql_extension.cc
+  sql_extension_update_precheck.cc
   validate.cc
   veb_file.cc
   veb_register_type_v1.cc
@@ -39,3 +40,6 @@ TARGET_INCLUDE_DIRECTORIES(villagesql_veb SYSTEM PRIVATE
 ADD_DEPENDENCIES(villagesql_veb GenError)
 ADD_DEPENDENCIES(villagesql_veb GenServerSource)
 ADD_DEPENDENCIES(villagesql_veb villagesql_common)
+
+# veb_file.cc includes the generated villagesql/include/version.h
+ADD_DEPENDENCIES(villagesql_veb villagesql_version_gen)
