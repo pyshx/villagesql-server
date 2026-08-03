@@ -9,7 +9,7 @@ See `include/villagesql/extension.h` for the full C++ API and examples.
 
 This SDK contains:
 
-- Two Protocol Versions:
+- Two SDK surfaces:
   - Stable (`/include` in the SDK bundle) - The most recent stable API.
     Extensions built against this API can be expected to work on any currently
     supported server version. It is copied from `villagesql/stable_sdk/v{N}`.
@@ -40,7 +40,9 @@ server.
 | Version          | Status         | Notes                                                                      |
 | ---------------- | -------------- | -------------------------------------------------------------------------- |
 | `VEF_PROTOCOL_1` | Stable         | Base protocol. Planned to be deprecated before beta.                       |
-| `VEF_PROTOCOL_2` | In development | Adds `deterministic` flag, VDF-based type operations, parameterized types. |
+| `VEF_PROTOCOL_2` | Deprecated     | Development version that became protocol 3. The server rejects it.         |
+| `VEF_PROTOCOL_3` | Stable         | Adds VDF-based type operations, parameterized types, and capabilities.      |
+| `VEF_PROTOCOL_4` | In development | Adds variable-length types, REAL promotion, and result-length declarations. |
 
 ### Changing the ABI/API
 

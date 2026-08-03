@@ -36,7 +36,7 @@ TypeDescriptor::TypeDescriptor(
     int64_t max_persisted_len, LengthKind length_kind, EncodeFunction encode,
     DecodeFunction decode, CompareFunction compare,
     std::optional<HashFunction> hash,
-    std::optional<NumericValueFunction> numeric_value,
+    std::optional<RealValueFunction> real_value,
     std::optional<IntToParamsFunction> int_to_params,
     std::optional<ResolveParamsFunction> resolve_params)
     : key_(std::move(key)),
@@ -50,7 +50,7 @@ TypeDescriptor::TypeDescriptor(
       decode_fn_(std::move(decode)),
       compare_fn_(std::move(compare)),
       hash_fn_(std::move(hash)),
-      numeric_value_fn_(std::move(numeric_value)),
+      real_value_fn_(std::move(real_value)),
       int_to_params_fn_(std::move(int_to_params)),
       resolve_params_fn_(std::move(resolve_params)) {}
 

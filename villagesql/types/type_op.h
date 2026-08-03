@@ -99,10 +99,9 @@ class HashOp {
   const TypeParameters &params_;
 };
 
-class NumericValueOp {
+class RealValueOp {
  public:
-  NumericValueOp(const NumericValueFunction &func,
-                 const TypeParameters &params);
+  RealValueOp(const RealValueFunction &func, const TypeParameters &params);
 
   double invoke(const unsigned char *data, size_t len) const;
 

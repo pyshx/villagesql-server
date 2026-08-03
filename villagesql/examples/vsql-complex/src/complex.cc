@@ -402,7 +402,6 @@ constexpr auto COMPLEX2 =
                                                // (separate buffer)
         .compare<&complex_compare>()           // auto: "COMPLEX2::compare"
         .hash<&complex2_hash>()                // auto: "COMPLEX2::hash"
-        .numeric_value<&complex_abs>()  // auto: "COMPLEX2::numeric_value"
         .intrinsic_default_str("(0,0)")
         .build();
 

@@ -135,9 +135,9 @@ static std::string registration_to_json(const vef_registration_t *r) {
     if (t->protocol >= VEF_PROTOCOL_4) {
       w.Key("variable_length");
       w.Bool(t->variable_length);
-      if (t->numeric_value_vdf_name) {
-        w.Key("numeric_value_vdf");
-        w.String(t->numeric_value_vdf_name);
+      if (t->real_value_vdf_name) {
+        w.Key("real_value_vdf");
+        w.String(t->real_value_vdf_name);
       }
     }
     if (t->protocol >= VEF_PROTOCOL_3) {

@@ -66,7 +66,7 @@
 namespace villagesql {
 class TypeDecoder;
 class TypeEncoder;
-bool HasNumericValue(const TypeContext &tc);
+bool HasRealValue(const TypeContext &tc);
 }  // namespace villagesql
 
 class Create_field;
@@ -1060,8 +1060,7 @@ class Field {
       act as DECIMAL with 1 fractional digits.
   */
   virtual Item_result numeric_context_result_type() const {
-    if (has_type_context() &&
-        villagesql::HasNumericValue(*get_type_context())) {
+    if (has_type_context() && villagesql::HasRealValue(*get_type_context())) {
       return REAL_RESULT;
     }
     return result_type();

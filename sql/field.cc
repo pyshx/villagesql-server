@@ -6267,7 +6267,7 @@ uint32 Field_longstr::max_data_length() const {
 double Field_string::val_real() const {
   ASSERT_COLUMN_MARKED_FOR_READ;
   if (has_type_context()) {
-    auto result = villagesql::TryComputeNumericValue(
+    auto result = villagesql::TryComputeRealValue(
         *get_type_context(), pointer_cast<const uchar *>(ptr), field_length);
     if (result.has_value()) return *result;
   }
@@ -6654,8 +6654,8 @@ double Field_varstring::val_real() const {
   ASSERT_COLUMN_MARKED_FOR_READ;
   const uint length = data_length();
   if (has_type_context()) {
-    auto result = villagesql::TryComputeNumericValue(
-        *get_type_context(), ptr + length_bytes, length);
+    auto result = villagesql::TryComputeRealValue(*get_type_context(),
+                                                  ptr + length_bytes, length);
     if (result.has_value()) return *result;
   }
   int error;
@@ -7208,7 +7208,7 @@ double Field_blob::val_real() const {
   const char *blob = pointer_cast<const char *>(get_blob_data());
   if (blob == nullptr) return 0.0;
   if (has_type_context()) {
-    auto result = villagesql::TryComputeNumericValue(
+    auto result = villagesql::TryComputeRealValue(
         *get_type_context(), pointer_cast<const uchar *>(blob),
         get_length(ptr));
     if (result.has_value()) return *result;
@@ -10533,7 +10533,7 @@ Item_result Create_field_wrapper::result_type() const {
 }
 
 Item_result Create_field_wrapper::numeric_context_result_type() const {
-  if (has_type_context() && villagesql::HasNumericValue(*get_type_context())) {
+  if (has_type_context() && villagesql::HasRealValue(*get_type_context())) {
     return REAL_RESULT;
   }
   return ::numeric_context_result_type(type(), result_type(),

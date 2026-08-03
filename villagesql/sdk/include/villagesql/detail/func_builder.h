@@ -723,10 +723,10 @@ struct TypeHashVdfWrapper {
   }
 };
 
-// TypeNumericValueVdfWrapper: wraps TypeNumericValueFunc into a VDF.
+// TypeRealValueVdfWrapper: wraps TypeRealValueFunc into a VDF.
 // VDF signature: (CUSTOM(type)) -> REAL.
 template <auto Func>
-struct TypeNumericValueVdfWrapper {
+struct TypeRealValueVdfWrapper {
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
     vef_invalue_t arg = get_invalue(ctx, args, 0);
@@ -893,7 +893,7 @@ struct TypeHashWithCacheVdfWrapper {
 };
 
 template <auto Func>
-struct TypeNumericValueWithCacheVdfWrapper {
+struct TypeRealValueWithCacheVdfWrapper {
   using FirstArgStripped = std::remove_cv_t<std::remove_reference_t<
       std::tuple_element_t<0, typename FuncParamTypes<decltype(Func)>::type>>>;
   using P = typename ExtractDchParamsType<FirstArgStripped>::type;

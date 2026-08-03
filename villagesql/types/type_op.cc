@@ -71,11 +71,11 @@ size_t HashOp::invoke(const unsigned char *data, size_t len) const {
   return static_cast<size_t>(*result);
 }
 
-NumericValueOp::NumericValueOp(const NumericValueFunction &func,
-                               const TypeParameters &params)
+RealValueOp::RealValueOp(const RealValueFunction &func,
+                         const TypeParameters &params)
     : vdf_(func.vdf()), params_(params) {}
 
-double NumericValueOp::invoke(const unsigned char *data, size_t len) const {
+double RealValueOp::invoke(const unsigned char *data, size_t len) const {
   vef_context_t ctx{};
   ctx.protocol = vdf_->protocol;
 
@@ -100,7 +100,7 @@ double NumericValueOp::invoke(const unsigned char *data, size_t len) const {
   result.type = VEF_RESULT_VALUE;
   vdf_->vdf(&ctx, &args, &result);
   if (result.type != VEF_RESULT_VALUE) {
-    LogVSQL(ERROR_LEVEL, "numeric_value VDF '%s' returned %d: %s", vdf_->name,
+    LogVSQL(ERROR_LEVEL, "real_value VDF '%s' returned %d: %s", vdf_->name,
             static_cast<int>(result.type),
             error_msg[0] != '\0' ? error_msg : "unknown error");
     return 0.0;

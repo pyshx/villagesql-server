@@ -110,9 +110,9 @@ class HashFunction {
   const vef_func_desc_t *vdf_{nullptr};
 };
 
-class NumericValueFunction {
+class RealValueFunction {
  public:
-  explicit NumericValueFunction(const vef_func_desc_t *vdf) : vdf_(vdf) {
+  explicit RealValueFunction(const vef_func_desc_t *vdf) : vdf_(vdf) {
     assert(vdf != nullptr);
   }
 

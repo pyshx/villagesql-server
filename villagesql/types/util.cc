@@ -752,15 +752,15 @@ std::optional<size_t> TryComputeHash(const TypeContext &tc, const uchar *data,
   return hash_op->invoke(data, len);
 }
 
-bool HasNumericValue(const TypeContext &tc) {
-  return tc.numeric_value_op().has_value();
+bool HasRealValue(const TypeContext &tc) {
+  return tc.real_value_op().has_value();
 }
 
-std::optional<double> TryComputeNumericValue(const TypeContext &tc,
-                                             const uchar *data, size_t len) {
-  const auto &numeric_value_op = tc.numeric_value_op();
-  if (!numeric_value_op.has_value()) return std::nullopt;
-  return numeric_value_op->invoke(data, len);
+std::optional<double> TryComputeRealValue(const TypeContext &tc,
+                                          const uchar *data, size_t len) {
+  const auto &real_value_op = tc.real_value_op();
+  if (!real_value_op.has_value()) return std::nullopt;
+  return real_value_op->invoke(data, len);
 }
 
 bool MaybeValidateUnionTypeCompatibility(Item *accumulator, Item *item) {
@@ -1364,7 +1364,7 @@ bool CheckCustomTypeUsage(Item *item, THD *thd) {
           case Item_sum::AVG_DISTINCT_FUNC:
           case Item_sum::STD_FUNC:
           case Item_sum::VARIANCE_FUNC:
-            if (HasNumericValue(*sum_func->get_arg(i)->get_type_context())) {
+            if (HasRealValue(*sum_func->get_arg(i)->get_type_context())) {
               continue;
             }
             [[fallthrough]];
