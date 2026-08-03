@@ -316,6 +316,11 @@ class FuncBuilder {
   constexpr detail::StaticFuncDesc<NumParams> build() const {
     static_assert(NumParams <= kMaxParams,
                   "Too many parameters (max is kMaxParams)");
+    static_assert(Mode != ParamMode::kUnset,
+                  "vsql make_func: arity must be declared explicitly. Call "
+                  ".param(TYPE) for each typed argument, .no_params() for "
+                  "a zero-arity function, or .varargs() for a variadic "
+                  "function, before .build()");
 
     using AllParams = typename detail::FuncParamTypes<decltype(Func)>::type;
     using ReturnType = typename detail::FuncReturnType<decltype(Func)>::type;
@@ -331,14 +336,6 @@ class FuncBuilder {
         return false;
       }
     }();
-
-    // Session VDFs (first param is vsql::Session) carry no SQL params, so
-    // .no_params() is not required; the Session itself declares arity=0.
-    static_assert(has_session_param || Mode != ParamMode::kUnset,
-                  "vsql make_func: arity must be declared explicitly. Call "
-                  ".param(TYPE) for each typed argument, .no_params() for "
-                  "a zero-arity function, or .varargs() for a variadic "
-                  "function, before .build()");
 
     // Detect state-style signatures: first parameter is `void*` or any
     // lvalue reference (State& / const State&). Aggregate result-shape

@@ -13,9 +13,6 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
 
-// VillageSQL extension exercising Tier 1 session context. Each VDF returns a
-// field of the session executing the call, read via vsql::Session.
-
 #include <villagesql/vsql.h>
 
 using namespace vsql;
@@ -38,15 +35,21 @@ VEF_GENERATE_ENTRY_POINTS(
     make_extension()
         .func(make_func<&session_schema>("session_schema")
                   .returns(STRING)
+                  .no_params()
                   .build())
         .func(make_func<&session_priv_user>("session_priv_user")
                   .returns(STRING)
+                  .no_params()
                   .build())
         .func(make_func<&session_priv_host>("session_priv_host")
                   .returns(STRING)
+                  .no_params()
                   .build())
-        .func(
-            make_func<&session_conn_id>("session_conn_id").returns(INT).build())
+        .func(make_func<&session_conn_id>("session_conn_id")
+                  .returns(INT)
+                  .no_params()
+                  .build())
         .func(make_func<&session_kill_status>("session_kill_status")
                   .returns(INT)
+                  .no_params()
                   .build()))

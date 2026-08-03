@@ -247,8 +247,7 @@ typedef struct {
   const char *extra;
 } vef_version_t;
 
-// Kill state of the session executing a callback. Mirrors THD::killed_state
-// but with stable ABI values independent of MySQL error codes.
+// Kill state of the session executing a callback.
 typedef enum : unsigned int {
   VEF_KILL_NOT_KILLED = 0,
   VEF_KILL_CONNECTION = 1,
@@ -263,18 +262,10 @@ typedef struct {
   vef_protocol_t protocol;
 
   // protocol >= VEF_PROTOCOL_4
-  //
-  // Read-only state of the session executing this callback. The server
-  // refreshes these immediately before each callback. String pointers are
-  // owned by the server and valid only for the duration of this callback;
-  // copy immediately if the extension needs to retain them. When no session
-  // is bound (no THD), schema/priv_user/priv_host are NULL, connection_id is
-  // 0, and kill_status is VEF_KILL_NOT_KILLED. Gate reads on
-  // `protocol >= VEF_PROTOCOL_4`.
-  const char *schema;      // connection default database, not object schema
-  uint64_t connection_id;  // THD thread id, widened for ABI headroom
-  const char *priv_user;   // active privilege user (CURRENT_USER), incl DEFINER
-  const char *priv_host;   // active privilege host
+  const char *schema;
+  uint64_t connection_id;
+  const char *priv_user;
+  const char *priv_host;
   vef_kill_status_t kill_status;
 } vef_context_t;
 

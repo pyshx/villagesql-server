@@ -321,7 +321,6 @@ class CustomResultWith {
   vef_vdf_result_t *r_;
 };
 
-// Kill state of the session executing this VDF call. Mirrors vef_kill_status_t.
 enum class KillStatus {
   NotKilled = VEF_KILL_NOT_KILLED,
   Connection = VEF_KILL_CONNECTION,
@@ -330,13 +329,8 @@ enum class KillStatus {
   Unknown = VEF_KILL_UNKNOWN,
 };
 
-// Read-only view of the session executing this VDF call. Declare a `Session`
-// as the FIRST parameter of a VDF and the SDK populates it from the call
-// context:
-//   void who(vsql::Session s, StringResult out) { out.set(s.priv_user()); }
-// String views are valid only for the duration of the call — copy what you
-// need to retain. All accessors degrade to empty/0 when the server did not
-// populate session fields (protocol < VEF_PROTOCOL_4 or no bound session).
+// Read-only session context for a VDF call. Use as the first parameter.
+// Returned string views are valid only for the call.
 class Session {
  public:
   explicit Session(const vef_context_t *ctx) : ctx_(ctx) {}

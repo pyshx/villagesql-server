@@ -76,8 +76,6 @@ class vdf_handler {
   bool m_active{false};
   const villagesql::TypeContext *m_return_type_context{nullptr};
 
-  // Refreshes m_context's Tier 1 session fields from current_thd. Called
-  // immediately before each extension callback.
   void refresh_session_context();
 
   // Marshal arguments into m_invalues array based on declared parameter types

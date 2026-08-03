@@ -21,9 +21,7 @@
 
 namespace villagesql::vdf {
 
-// Maps THD::killed_state to the stable VEF kill-status ABI enum.
-// THD::killed_state enumerators carry MySQL error-code values, so this is an
-// explicit switch, not a cast.
+// THD::killed_state uses MySQL error-code values, so map instead of casting.
 inline vef_kill_status_t vef_map_kill_status(THD::killed_state k) {
   switch (k) {
     case THD::NOT_KILLED:

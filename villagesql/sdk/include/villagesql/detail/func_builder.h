@@ -599,16 +599,12 @@ struct WrapperVoidStarRefState {
   }
 };
 
-// Detects a leading vsql::Session parameter.
 template <typename T>
 struct is_session_param : std::false_type {};
 template <>
 struct is_session_param<::vsql::Session> : std::true_type {};
 
-// Wraps void(Session, TypedArgs..., ResultWrapper) -> vef_vdf_func_t.
-// The Session view is built from ctx; SQL arguments live at indices
-// [1, NumParams] of the parameter tuple (index 0 is the Session), and the
-// result wrapper is the final parameter. Mirrors WrapperTypedState's shape.
+// Wrapper for VDFs with a leading Session parameter.
 template <auto Func, size_t NumParams>
 struct WrapperWithSession {
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,

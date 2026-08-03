@@ -84,7 +84,7 @@ TEST_F(SessionAccessorTest, EmptyWhenProtocolBelow4) {
 
 TEST_F(SessionAccessorTest, EmptyWhenNullPointers) {
   vef_context_t ctx{};
-  ctx.protocol = VEF_PROTOCOL_4;  // bound session, but no schema/identity
+  ctx.protocol = VEF_PROTOCOL_4;
 
   vsql::Session s(&ctx);
   EXPECT_TRUE(s.available());
