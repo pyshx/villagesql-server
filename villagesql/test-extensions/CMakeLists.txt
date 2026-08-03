@@ -27,6 +27,7 @@ vsql_add_test_extension(vsql-preview-ping-test         vsql_preview_ping_test)
 vsql_add_test_extension(vsql-preview-ping-alt-test     vsql_preview_ping_alt_test)
 vsql_add_test_extension(vsql-preview-unknown-cap-test  vsql_preview_unknown_cap_test)
 vsql_add_test_extension(vsql-keyring-reader            vsql_keyring_reader)
+vsql_add_test_extension(vsql-auth-test                 vsql_auth_test)
 vsql_add_test_extension(vsql-lifecycle-test            vsql_lifecycle_test)
 vsql_add_test_extension(vsql-thread-worker-test        vsql_thread_worker_test)
 vsql_add_test_extension(vsql-preview-ping-no-cap-test  vsql_preview_ping_no_cap_test)
@@ -50,3 +51,10 @@ vsql_add_test_extension(update-test-v1                 update_test  VERSION 1.0.
 vsql_add_test_extension(update-test-v1.1               update_test  VERSION 1.1.0)
 vsql_add_test_extension(update-test-v1.2               update_test  VERSION 1.2.0)
 vsql_add_test_extension(update-test-v2                 update_test  VERSION 2.0.0)
+
+# update_schema_test v1/v2 exercise on-disk representation migration across
+# ALTER EXTENSION ... AT RESTART: v1 registers MYTYPE (4-byte int), v2 keeps
+# MYTYPE (backward-compatible) and adds MYTYPE_V2 (8-byte int) plus a
+# mytype_to_v2 conversion VDF.
+vsql_add_test_extension(update-schema-test-v1          update_schema_test  VERSION 1.0.0)
+vsql_add_test_extension(update-schema-test-v2          update_schema_test  VERSION 2.0.0)

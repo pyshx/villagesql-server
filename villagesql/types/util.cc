@@ -123,15 +123,26 @@ bool MaybeInjectCustomType(THD *thd, TABLE_SHARE &share, Field *field) {
     return false;
   }
 
-  // Extract identifiers directly
-  std::string db_name = std::string(share.db.str, share.db.length);
+  // Extract identifiers directly. Some upstream paths pass a filesystem-shaped
+  // "<db>/<table>" cache key into init_tmp_table_share() (e.g. InnoDB's
+  // acquire_uncached_table on the DROP TABLE path). init_tmp_table_share sets
+  // share.db from strlen(key), so we can observe "<db>/<table>" here instead
+  // of "<db>". Strip anything from the first '/' onward. Schema names cannot
+  // contain '/', so this is safe.
+  // TODO(villagesql-back-to-mysql): fix upstream so share.db never carries the
+  // "<db>/<table>" shape and remove this workaround.
+  std::string db_name(share.db.str, share.db.length);
+  const size_t slash = db_name.find('/');
+  if (slash != std::string::npos) {
+    db_name.resize(slash);
+  }
+  std::string table_name(share.table_name.str, share.table_name.length);
 
   // Skip special databases
   if (::villagesql::is_system_schema(db_name.c_str())) {
     return false;
   }
 
-  std::string table_name(share.table_name.str, share.table_name.length);
   std::string column_name(field->field_name);
   ColumnKey col_key(db_name, table_name, column_name);
 
@@ -561,18 +572,19 @@ String *EncodeStringForField(Field *field, const String &from, bool &is_valid) {
   return encoded;
 }
 
-// Lazily allocate a TypeDecoder for field, reused for all subsequent decodes
-// within the table's lifetime.
+// Lazily allocate a TypeDecoder for field, reused for all subsequent decodes.
+// The decoder pointer is cached on the Field, so it must be freed no later
+// than the Field. We pick a MEM_ROOT accordingly:
 //
-// For regular tables (NO_TMP_TABLE), TABLE::mem_root has the same lifetime as
-// the Field clone that caches the decoder pointer, so both are freed together
-// when the TABLE is evicted from the table open cache.
-//
-// For any kind of tmp table use TABLE_SHARE::mem_root, this is where the
-// Fields are allocated for most uses of tmp tables. The one exception is
-// INTERNAL_TMP_TABLE where the initial Table object's fields are allocated
-// from the THD::mem_root, but for these tables the share is destroyed at the
-// end of the statement, so the lifetime is correct.
+// - NO_TMP_TABLE: use TABLE::mem_root. For cache-managed base tables this is
+//   freed with the Field when the TABLE is evicted from the table cache.
+//   WARNING: this does not hold for every NO_TMP_TABLE. A caller that builds
+//   its own TABLE (e.g. the Item_func_sp result dummy table) is responsible
+//   for freeing table->mem_root itself -- see Item_func_sp::cleanup().
+// - Tmp tables: use TABLE_SHARE::mem_root. User/CREATE TEMPORARY tables put
+//   their Fields there too; optimizer-internal tmp tables put Fields on
+//   thd->mem_root instead, but its share and thd->mem_root are both freed at
+//   end of statement, so the cached pointer never dangles.
 static TypeDecoder *GetTypeDecoderFor(const Field *field) {
   TypeDecoder *decoder = field->get_type_decoder();
   if (decoder == nullptr) {
@@ -1114,7 +1126,12 @@ type_conversion_status StoreCustomFieldIntrinsicDefault(Field *field) {
     return TYPE_ERR_BAD_VALUE;
   }
   const size_t cached_size = tc.intrinsic_default_size();
-  assert(cached_size == static_cast<size_t>(tc.persisted_length()));
+  // Fixed-length types store exactly persisted_length bytes; variable-length
+  // types store any non-empty value up to the field's max capacity.
+  assert(tc.is_variable_length()
+             ? cached_size > 0 &&
+                   cached_size <= static_cast<size_t>(tc.field_buffer_length())
+             : cached_size == static_cast<size_t>(tc.persisted_length()));
 
   field->set_notnull();
   return field->store(reinterpret_cast<const char *>(cached_buffer),
@@ -1651,6 +1668,19 @@ std::shared_ptr<const IndexContext> AcquireIndexContextClientManaged(
   auto &vclient = VictionaryClient::instance();
   auto guard = vclient.get_read_lock();
   return vclient.index_contexts().acquire_client_managed(source_ic->key());
+}
+
+std::shared_ptr<const IndexProfileDescriptor>
+AcquireIndexProfileDescriptorClientManaged(
+    const IndexProfileDescriptor *source_ipd) {
+  if (source_ipd == nullptr) {
+    return std::shared_ptr<const IndexProfileDescriptor>();
+  }
+
+  auto &vclient = VictionaryClient::instance();
+  auto guard = vclient.get_read_lock();
+  return vclient.index_profile_descriptors().acquire_client_managed(
+      source_ipd->key());
 }
 
 bool InjectCustomSpParams(

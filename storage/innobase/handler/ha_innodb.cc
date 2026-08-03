@@ -12328,13 +12328,31 @@ inline int create_index(
   index = dict_mem_index_create(table_name, key->name, 0, ind_type,
                                 key->user_defined_key_parts);
 
+  innodb_session_t *&priv = thd_to_innodb_session(trx->mysql_thd);
+  dict_table_t *handler = priv->lookup_table_handler(table_name);
+
+  // TODO(villagesql-indexing): Support custom indexes on partitioned tables.
+  if (key->custom_index_context != nullptr &&
+      dd_table_is_partitioned(*dd_table)) {
+    villagesql_error(
+        "InnoDB: Custom index is not supported on partitioned tables", MYF(0));
+    dict_mem_index_free(index);
+    error = ER_VILLAGESQL_GENERIC_ERROR;
+    goto do_cleanup;
+  }
+
   // Record the custom index descriptor carried on the KEY before the index is
   // added to the dictionary cache.
   using villagesql::innodb::Custom_index;
-  Custom_index::load(index, key->custom_index_context);
-
-  innodb_session_t *&priv = thd_to_innodb_session(trx->mysql_thd);
-  dict_table_t *handler = priv->lookup_table_handler(table_name);
+  {
+    dberr_t cerr =
+        Custom_index::attach(index, key->custom_index_context, nullptr);
+    if (cerr != DB_SUCCESS) {
+      dict_mem_index_free(index);
+      error = convert_error_code_to_mysql(cerr, flags, nullptr);
+      goto do_cleanup;
+    }
+  }
 
   if (handler != nullptr) {
     /* This setting will enforce SQL NULL == SQL NULL.
@@ -12380,6 +12398,7 @@ inline int create_index(
           "InnoDB: Indexing for types with column storage is supported only "
           "with custom index.",
           MYF(0));
+      dict_mem_index_free(index);
       error = ER_VILLAGESQL_GENERIC_ERROR;
       goto do_cleanup;
     }
@@ -12434,6 +12453,16 @@ inline int create_index(
 
     index->add_field(field_name, prefix_len,
                      !(key_part->key_part_flag & HA_REVERSE_SORT));
+
+    {
+      dberr_t perr =
+          Custom_index::add_profile(index, key_part->custom_index_profile, i);
+      if (perr != DB_SUCCESS) {
+        dict_mem_index_free(index);
+        error = convert_error_code_to_mysql(perr, flags, nullptr);
+        goto do_cleanup;
+      }
+    }
   }
 
   ut_ad(key->flags & HA_FULLTEXT || !(index->type & DICT_FTS));

@@ -58,7 +58,7 @@ runs:
       working-directory: ${{ env.SOURCE_DIR }}
       run: |
         # Build command with flags
-        CMD="./scripts/test-ci.sh"
+        CMD="./villagesql/bld_tools/test_ci.sh"
 
         # Unit tests flag
         if [ "${{ inputs.run-unit-tests }}" = "false" ]; then
@@ -106,6 +106,7 @@ runs:
         path: |
           ${{ env.BUILD_DIR }}/mysql-test-report.xml
           ${{ env.BUILD_DIR }}/mysql-test/var/log/
+          ${{ env.BUILD_DIR }}/mysql-test/var/*/log/
           ${{ env.BUILD_DIR }}/mysql-test/var/ctest.log
           ${{ env.BUILD_DIR }}/Testing/Temporary/LastTest.log
           ${{ env.BUILD_DIR }}/CMakeCache.txt

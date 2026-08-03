@@ -1,15 +1,15 @@
-name: Full Test Suite (Reusable)
+name: Full Test Suite
 
-# Reusable workflow for running the full test suite
-# Called by testall.yml and nightly-tag-test.yml
+# Workflow to run the full test suite
 
 on:
   workflow_call:
     inputs:
       ref:
-        description: 'Git ref to checkout and test'
-        required: true
+        description: 'Git ref to checkout and test (default main)'
+        required: false
         type: string
+        default: 'main'
       build-type:
         description: 'Build type (debug or release)'
         required: false
@@ -20,11 +20,28 @@ on:
         required: false
         type: string
         default: 'full-test'
-      run-all-suites-conditional:
-        description: 'Check should_run_all_tests.sh before running all suites'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to checkout and test (default main)'
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: 'main'
+      build-type:
+        description: 'Build type (debug or release)'
+        required: false
+        type: string
+        default: 'debug'
+      artifact-prefix:
+        description: 'Prefix for artifact names'
+        required: false
+        type: string
+        default: 'full-test'
+  # Runs after every Nightly run, as an independent workflow.
+  # Runs even if Nightly failed, as a source of nightly test results.
+  workflow_run:
+    workflows: ['Nightly Build and Test']
+    types: [completed]
 
 jobs:
   build-and-test:
@@ -36,14 +53,32 @@ jobs:
     env:
       SOURCE_DIR: ${{ github.workspace }}/source
       BUILD_DIR: ${{ github.workspace }}/build
+      # workflow_run supplies no inputs, so fall back to the commit the nightly
+      # run built. Its tags only exist when it succeeded, but head_sha is always
+      # there, so a failed nightly still gets its code tested.
+      REF: ${{ inputs.ref || github.event.workflow_run.head_sha || 'main' }}
+      BUILD_TYPE: ${{ inputs.build-type || 'release' }}
+      ARTIFACT_PREFIX: ${{ inputs.artifact-prefix || 'nightly-full' }}
 
     steps:
+    - name: Report Parameters
+      run: |
+        echo "Trigger: $GITHUB_EVENT_NAME"
+        echo "Git Rev: $REF"
+        echo "Build type: $BUILD_TYPE"
+        echo "Artifact prefix: $ARTIFACT_PREFIX"
+
     - name: Checkout code
       uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
-        ref: ${{ inputs.ref }}
+        ref: ${{ env.REF }}
         fetch-depth: 50
         path: source
+
+    - name: Report Checkout
+      run: |
+        echo "Git SHA1: $(git -C source rev-parse ${{ env.REF }})"
+        echo "Git Commit: $(git -C source log -n1 --oneline)"
 
     - name: Setup VillageSQL build environment
       uses: ./source/.github/actions/setup-villagesql-build
@@ -52,43 +87,25 @@ jobs:
 
     - name: Build VillageSQL
       working-directory: ./source
-      run: ./scripts/build-ci.sh
-      env:
-        PARALLEL_JOBS: 16
-        BUILD_TYPE: ${{ inputs.build-type }}
+      run: |
+        ./villagesql/bld_tools/build_ci.sh
 
-
-    - name: Run tests
+    - name: Run standard tests (unit, integration with only suite village)
       uses: ./source/.github/actions/run-tests
       with:
-        artifact-name: ${{ inputs.artifact-prefix }}-logs-${{ github.run_number }}
+        artifact-name: ${{ env.ARTIFACT_PREFIX }}-logs-${{ github.run_number }}
 
     - name: Run big tests
       uses: ./source/.github/actions/run-tests
       with:
         run-unit-tests: false
         run-big-tests: true
-        artifact-name: ${{ inputs.artifact-prefix }}-big-test-logs-${{ github.run_number }}
-
-    - name: Check if should run all tests
-      if: inputs.run-all-suites-conditional
-      id: check-all-tests
-      working-directory: ./source
-      run: |
-        if ./scripts/should_run_all_tests.sh; then
-          echo "run=true" >> $GITHUB_OUTPUT
-        else
-          echo "run=false" >> $GITHUB_OUTPUT
-          echo "Skipping all test suites - commit unchanged from previous nightly"
-        fi
+        artifact-name: ${{ env.ARTIFACT_PREFIX }}-big-test-logs-${{ github.run_number }}
 
     - name: Run all test suites (excluding VillageSQL)
-      if: >
-        !inputs.run-all-suites-conditional ||
-        steps.check-all-tests.outputs.run == 'true'
       uses: ./source/.github/actions/run-tests
       with:
         run-unit-tests: false
         run-all-suites: true
         skip-suite: village
-        artifact-name: ${{ inputs.artifact-prefix }}-all-suites-logs-${{ github.run_number }}
+        artifact-name: ${{ env.ARTIFACT_PREFIX }}-all-suites-logs-${{ github.run_number }}

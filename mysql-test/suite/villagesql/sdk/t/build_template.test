@@ -14,9 +14,12 @@
 # Get paths - use @@basedir which points to the build directory where mysqld runs
 --let $veb_dir = `SELECT @@veb_dir`
 --let $build_dir = `SELECT @@basedir`
---let $sdk_version = `SELECT @@villagesql_server_version`
+# @@villagesql_server_version includes the code base as a prefix, separated
+# from the abbreviated version by an underscore (e.g. "mysql-8.4_0.0.5").
+# The SDK directory name uses the abbreviated version.
+--let $sdk_abbr = `SELECT SUBSTRING_INDEX(@@villagesql_server_version, '_', -1)`
 --let $test_dir = $MYSQLTEST_VARDIR/tmp/sdk_test
---let $sdk_dir_name = villagesql-extension-sdk-$sdk_version
+--let $sdk_dir_name = villagesql-extension-sdk-$sdk_abbr
 --let $sdk_tarball = $build_dir/$sdk_dir_name.tar.gz
 --let $sdk_dir = $test_dir/$sdk_dir_name
 
@@ -29,22 +32,30 @@
 --exec mkdir -p $test_dir
 
 --echo # Extract SDK tarball
+# unset LD_PRELOAD so tar does not run under the LD_PRELOAD'd ASan runtime on
+# sanitizer builds; otherwise uninstrumented tar/gzip trip LeakSanitizer on
+# their own allocations and fail with exitcode=42 (see
+# include/villagesql/create_extension_sdk.inc for the full explanation).
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
---exec tar -xzf $sdk_tarball -C $test_dir
+--exec unset LD_PRELOAD && tar -xzf $sdk_tarball -C $test_dir
 
 --echo # Build the template extension
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 --exec mkdir -p $sdk_dir/template/build
 
 # Run cmake
+# unset LD_PRELOAD so the toolchain sub-build does not run under the
+# LD_PRELOAD'd ASan runtime on sanitizer builds; otherwise the uninstrumented
+# system gcc trips LeakSanitizer on GCC's own allocations and fails the build
+# (see include/villagesql/create_extension_sdk.inc for the full explanation).
 --echo # Running cmake...
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
---exec cd $sdk_dir/template/build && cmake .. > cmake_output.txt 2>&1
+--exec cd $sdk_dir/template/build && unset LD_PRELOAD && cmake .. > cmake_output.txt 2>&1
 
 # Run make
 --echo # Running make...
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
---exec cd $sdk_dir/template/build && make > make_output.txt 2>&1
+--exec cd $sdk_dir/template/build && unset LD_PRELOAD && make > make_output.txt 2>&1
 
 --echo # Verify VEB was created
 --file_exists $sdk_dir/template/build/my_extension.veb

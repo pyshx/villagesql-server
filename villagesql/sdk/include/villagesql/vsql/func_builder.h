@@ -66,6 +66,16 @@ using ResolveTypeParamsFunc =
     bool (*)(const std::map<std::string, std::string> &params,
              vsql::ResolvedTypeParams *result, char *error_msg);
 
+// resolve_params (mutating overload): same as ResolveTypeParamsFunc but the
+// params map is passed by non-const reference, so the type may rewrite it
+// (e.g. fill in default values. The rewritten map is serialized back and
+// becomes the canonical parameter string persisted for the type. The rewrite
+// must be idempotent: resolving the rewritten params again must yield the same
+// params and storage sizes.
+using ResolveTypeParamsMutableFunc =
+    bool (*)(std::map<std::string, std::string> &params,
+             vsql::ResolvedTypeParams *result, char *error_msg);
+
 }  // namespace func_builder
 }  // namespace vsql
 
@@ -77,6 +87,20 @@ namespace func_builder {
 constexpr const char *STRING = "STRING";
 constexpr const char *INT = "INT";
 constexpr const char *REAL = "REAL";
+
+namespace detail {
+
+// Compile-time traps for function-builder misuse. These are intentionally left
+// undefined and are NOT constexpr. Every extension is registered inside a
+// `static constexpr` builder chain (see VEF_GENERATE_ENTRY_POINTS), so the
+// whole chain is constant-evaluated; reaching a call to one of these during
+// that evaluation is ill-formed and the function name is the compiler's
+// diagnostic. (If a builder is instead used at runtime, the bad path fails to
+// link, for the same absence of a definition.)
+[[noreturn]] void max_result_length_is_only_valid_for_a_STRING_return_type();
+[[noreturn]] void call_returns_before_max_result_length();
+
+}  // namespace detail
 
 // Encode: string -> custom binary. The function reports its outcome by
 // calling out.set_length(n), out.set_null(), out.warning(msg), or
@@ -174,6 +198,7 @@ class FuncBuilder {
     next.name_ = name_;
     next.return_type_ = return_type_;
     next.buffer_size_ = buffer_size_;
+    next.max_result_length_ = max_result_length_;
     next.prerun_ = prerun_;
     next.postrun_ = postrun_;
     next.deterministic_ = deterministic_;
@@ -197,6 +222,7 @@ class FuncBuilder {
     next.name_ = name_;
     next.return_type_ = return_type_;
     next.buffer_size_ = buffer_size_;
+    next.max_result_length_ = max_result_length_;
     next.prerun_ = prerun_;
     next.postrun_ = postrun_;
     next.deterministic_ = deterministic_;
@@ -216,6 +242,7 @@ class FuncBuilder {
     next.name_ = name_;
     next.return_type_ = return_type_;
     next.buffer_size_ = buffer_size_;
+    next.max_result_length_ = max_result_length_;
     next.prerun_ = prerun_;
     next.postrun_ = postrun_;
     next.deterministic_ = deterministic_;
@@ -225,6 +252,27 @@ class FuncBuilder {
   constexpr FuncBuilder<Func, NumParams, Mode, HasPrerun> &buffer_size(
       size_t s) {
     buffer_size_ = s;
+    return *this;
+  }
+
+  // Declare the maximum length of the STRING result, in characters, so the
+  // result column is sized to hold the full value when materialized. A
+  // STRING-returning VDF that does not declare this falls back to the argument
+  // width (a large result then truncates when materialized). Values above
+  // VEF_MAX_RESULT_LENGTH are capped by the server. Bumps the required protocol
+  // to VEF_PROTOCOL_4.
+  //
+  // Only valid for a STRING return type. Call .returns(STRING) before this so
+  // the return type is known here: a non-STRING return (or an undeclared one)
+  // is rejected at build time rather than silently ignored.
+  constexpr FuncBuilder<Func, NumParams, Mode, HasPrerun> &max_result_length(
+      size_t n) {
+    if (return_type_ == nullptr) {
+      detail::call_returns_before_max_result_length();
+    } else if (detail::to_vef_type(return_type_).id != VEF_TYPE_STRING) {
+      detail::max_result_length_is_only_valid_for_a_STRING_return_type();
+    }
+    max_result_length_ = n;
     return *this;
   }
 
@@ -246,6 +294,7 @@ class FuncBuilder {
     next.name_ = name_;
     next.return_type_ = return_type_;
     next.buffer_size_ = buffer_size_;
+    next.max_result_length_ = max_result_length_;
     next.prerun_ = &detail::typed_prerun_wrapper<Hook>;
     next.postrun_ = postrun_;
     next.deterministic_ = deterministic_;
@@ -364,6 +413,7 @@ class FuncBuilder {
     meta.return_type = detail::to_vef_type(return_type_);
     meta.num_params = NumParams;
     meta.buffer_size = buffer_size_;
+    meta.max_result_length = max_result_length_;
     meta.deterministic = deterministic_;
     for (size_t i = 0; i < NumParams; ++i) {
       meta.param_types[i] = detail::to_vef_type(param_types_[i]);
@@ -378,6 +428,7 @@ class FuncBuilder {
         return_type_(nullptr),
         param_types_{},
         buffer_size_(0),
+        max_result_length_(0),
         prerun_(nullptr),
         postrun_(nullptr),
         deterministic_(false) {}
@@ -386,6 +437,7 @@ class FuncBuilder {
   const char *return_type_;
   std::array<const char *, NumParams> param_types_;
   size_t buffer_size_;
+  size_t max_result_length_;
   vef_prerun_func_t prerun_;
   vef_postrun_func_t postrun_;
   bool deterministic_;
@@ -406,20 +458,23 @@ class FuncBuilder {
 // The State type is explicit, and clear/accumulate signatures are validated
 // against State at compile time.
 
-template <typename State, auto Func, size_t NumParams>
+template <typename State, auto Func, size_t NumParams, bool HasClear = false,
+          bool HasAccumulate = false>
 class AggFuncBuilder {
  public:
-  constexpr AggFuncBuilder<State, Func, NumParams> &returns(const char *t) {
+  constexpr AggFuncBuilder<State, Func, NumParams, HasClear, HasAccumulate> &
+  returns(const char *t) {
     return_type_ = t;
     return *this;
   }
 
-  constexpr AggFuncBuilder<State, Func, NumParams + 1> param(
-      const char *t) const {
-    AggFuncBuilder<State, Func, NumParams + 1> next;
+  constexpr AggFuncBuilder<State, Func, NumParams + 1, HasClear, HasAccumulate>
+  param(const char *t) const {
+    AggFuncBuilder<State, Func, NumParams + 1, HasClear, HasAccumulate> next;
     next.name_ = name_;
     next.return_type_ = return_type_;
     next.buffer_size_ = buffer_size_;
+    next.max_result_length_ = max_result_length_;
     next.clear_ = clear_;
     next.accumulate_ = accumulate_;
     next.deterministic_ = deterministic_;
@@ -430,21 +485,45 @@ class AggFuncBuilder {
     return next;
   }
 
-  constexpr AggFuncBuilder<State, Func, NumParams> &buffer_size(size_t s) {
+  constexpr AggFuncBuilder<State, Func, NumParams, HasClear, HasAccumulate> &
+  buffer_size(size_t s) {
     buffer_size_ = s;
     return *this;
   }
 
-  constexpr AggFuncBuilder<State, Func, NumParams> &deterministic(
-      bool d = true) {
+  // Declare the maximum length of the STRING result, in characters, so the
+  // result column is sized to hold the full value when materialized. An
+  // aggregate returning STRING that does not declare this falls back to the
+  // argument width (a large result then truncates when materialized). Values
+  // above VEF_MAX_RESULT_LENGTH are capped by the server. Bumps the required
+  // protocol to VEF_PROTOCOL_4.
+  //
+  // Only valid for a STRING return type. Call .returns(STRING) before this so
+  // the return type is known here: a non-STRING return (or an undeclared one)
+  // is rejected at build time rather than silently ignored.
+  constexpr AggFuncBuilder<State, Func, NumParams, HasClear, HasAccumulate> &
+  max_result_length(size_t n) {
+    if (return_type_ == nullptr) {
+      detail::call_returns_before_max_result_length();
+    } else if (detail::to_vef_type(return_type_).id != VEF_TYPE_STRING) {
+      detail::max_result_length_is_only_valid_for_a_STRING_return_type();
+    }
+    max_result_length_ = n;
+    return *this;
+  }
+
+  constexpr AggFuncBuilder<State, Func, NumParams, HasClear, HasAccumulate> &
+  deterministic(bool d = true) {
     deterministic_ = d;
     return *this;
   }
 
   // void(State&) — first parameter must match the State type declared in
-  // make_aggregate_func<State, ...>.
+  // make_aggregate_func<State, ...>. Sets HasClear on the returned builder so
+  // build() can static_assert that both clear and accumulate were configured.
   template <auto Fn>
-  constexpr AggFuncBuilder<State, Func, NumParams> &clear() {
+  constexpr AggFuncBuilder<State, Func, NumParams, true, HasAccumulate> clear()
+      const {
     using Params = typename detail::FuncParamTypes<decltype(Fn)>::type;
     using ReturnType = typename detail::FuncReturnType<decltype(Fn)>::type;
     using DeducedState =
@@ -454,15 +533,27 @@ class AggFuncBuilder {
     static_assert(std::is_same_v<DeducedState, State>,
                   "clear: first parameter must be State& matching the "
                   "make_aggregate_func State type");
-    clear_ = &detail::agg_clear_wrapper<State, Fn>;
-    return *this;
+    AggFuncBuilder<State, Func, NumParams, true, HasAccumulate> next;
+    next.name_ = name_;
+    next.return_type_ = return_type_;
+    next.buffer_size_ = buffer_size_;
+    next.max_result_length_ = max_result_length_;
+    next.clear_ = &detail::agg_clear_wrapper<State, Fn>;
+    next.accumulate_ = accumulate_;
+    next.deterministic_ = deterministic_;
+    for (size_t i = 0; i < NumParams; ++i) {
+      next.param_types_[i] = param_types_[i];
+    }
+    return next;
   }
 
   // void(State&, TypedArgs...) — first parameter must match State; remaining
   // parameters must match the SQL param count declared via .param(TYPE)
-  // calls. Call .accumulate() after all .param(TYPE) calls.
+  // calls. Call .accumulate() after all .param(TYPE) calls. Sets HasAccumulate
+  // on the returned builder (see clear()).
   template <auto Fn>
-  constexpr AggFuncBuilder<State, Func, NumParams> &accumulate() {
+  constexpr AggFuncBuilder<State, Func, NumParams, HasClear, true> accumulate()
+      const {
     using Params = typename detail::FuncParamTypes<decltype(Fn)>::type;
     using ReturnType = typename detail::FuncReturnType<decltype(Fn)>::type;
     using DeducedState =
@@ -482,16 +573,26 @@ class AggFuncBuilder {
         "accumulate: every C++ parameter after State& must be a typed argument "
         "wrapper such as IntArg, RealArg, StringArg, CustomArg, or "
         "CustomArgWith<P>");
-    accumulate_ = &detail::AggAccumulateWrapper<State, Fn, NumParams>::invoke;
-    return *this;
+    AggFuncBuilder<State, Func, NumParams, HasClear, true> next;
+    next.name_ = name_;
+    next.return_type_ = return_type_;
+    next.buffer_size_ = buffer_size_;
+    next.max_result_length_ = max_result_length_;
+    next.clear_ = clear_;
+    next.accumulate_ =
+        &detail::AggAccumulateWrapper<State, Fn, NumParams>::invoke;
+    next.deterministic_ = deterministic_;
+    for (size_t i = 0; i < NumParams; ++i) {
+      next.param_types_[i] = param_types_[i];
+    }
+    return next;
   }
 
   constexpr detail::StaticFuncDesc<NumParams> build() const {
     static_assert(NumParams <= kMaxParams,
                   "Too many parameters (max is kMaxParams)");
-    if ((clear_ == nullptr) != (accumulate_ == nullptr)) {
-      detail::config_error__aggregate_must_set_both_clear_and_accumulate();
-    }
+    static_assert(HasClear && HasAccumulate,
+                  "aggregate must set both .clear<>() and .accumulate<>()");
 
     using AllParams = typename detail::FuncParamTypes<decltype(Func)>::type;
     using UniquePTuple = typename detail::unique_params_types<AllParams>::type;
@@ -508,6 +609,7 @@ class AggFuncBuilder {
     meta.return_type = detail::to_vef_type(return_type_);
     meta.num_params = NumParams;
     meta.buffer_size = buffer_size_;
+    meta.max_result_length = max_result_length_;
     meta.deterministic = deterministic_;
     for (size_t i = 0; i < NumParams; ++i) {
       meta.param_types[i] = detail::to_vef_type(param_types_[i]);
@@ -525,6 +627,7 @@ class AggFuncBuilder {
         return_type_(nullptr),
         param_types_{},
         buffer_size_(0),
+        max_result_length_(0),
         deterministic_(false),
         clear_(nullptr),
         accumulate_(nullptr) {}
@@ -533,11 +636,12 @@ class AggFuncBuilder {
   const char *return_type_;
   std::array<const char *, NumParams> param_types_;
   size_t buffer_size_;
+  size_t max_result_length_;
   bool deterministic_;
   vef_vdf_clear_func_t clear_;
   vef_vdf_accumulate_func_t accumulate_;
 
-  template <typename S, auto F, size_t M>
+  template <typename S, auto F, size_t M, bool C, bool A>
   friend class AggFuncBuilder;
 
   template <typename S, auto F>
@@ -715,7 +819,7 @@ constexpr detail::StaticFuncDesc<1> make_int_to_params(const char *name) {
 }
 
 // make_resolve_params<&fn>("name") — (STRING) -> STRING.
-template <ResolveTypeParamsFunc Func>
+template <auto Func>
 constexpr detail::StaticFuncDesc<1> make_resolve_params(const char *name) {
   detail::FuncWithMetadata meta{};
   meta.f = &detail::ResolveParamsWrapper<Func>::invoke;

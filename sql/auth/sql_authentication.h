@@ -1,4 +1,5 @@
 /* Copyright (c) 2000, 2026, Oracle and/or its affiliates.
+   Copyright (c) 2026 VillageSQL Contributors
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -35,6 +36,7 @@
 #include "mysql/plugin_auth_common.h"
 #include "mysql/strings/m_ctype.h"
 #include "sql/sql_plugin_ref.h"  // plugin_ref
+#include "villagesql/services/preview/auth_info.h"
 
 class ACL_USER;
 class Protocol_classic;
@@ -92,6 +94,8 @@ struct MPVIO_EXT : public MYSQL_PLUGIN_VIO {
   Thd_charset_adapter *charset_adapter;
   LEX_CSTRING acl_user_plugin;
   int vio_is_encrypted;
+  // VillageSQL: populated by the VEF auth seam.
+  villagesql::services::VefAuthInfo vef_auth_info;
   bool can_authenticate();
 };
 
