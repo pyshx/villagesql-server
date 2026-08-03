@@ -30,6 +30,7 @@ on:
         description: 'Git tag, branch, or SHA to build from (e.g. 0.0.4 or main).'
         required: true
         type: string
+        default: 'main'
       release_tag:
         description: 'GitHub Release to attach artifacts to. Defaults to "ref". Leave blank to skip upload (useful for test builds — artifacts are still available for download from the Actions run page).'
         required: false
@@ -45,6 +46,16 @@ permissions:
   contents: read
 
 jobs:
+  report-parameters:
+    name: Report Parameters
+    runs-on: self-hosted
+    steps:
+    - name: Report Parameters
+      run: |
+        echo "Git Rev: ${{ inputs.ref }}"
+        echo "Release Tag: ${{ inputs.release_tag }}"
+        echo "Release Build: ${{ inputs.release_build }}"
+
   build:
     strategy:
       fail-fast: false
@@ -56,7 +67,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             platform: linux-aarch64
             os: linux
-          - runner: macos-latest
+          - runner: [self-hosted, macOS, ARM64]
             platform: macos-arm64
             os: macos
     uses: ./.github/workflows/build-server-branch.yml

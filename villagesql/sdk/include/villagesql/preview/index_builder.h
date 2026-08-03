@@ -256,6 +256,7 @@ namespace vsql::preview_index_builder {
 
 using Arena = vsql::preview_storage::Arena;
 
+using vsql::preview_storage::detail::AllocateArenaStorage;
 using vsql::preview_storage::detail::ERROR_MSG_SIZE;
 using vsql::preview_storage::detail::tl_error_msg;
 
@@ -500,14 +501,15 @@ struct CreateWrapper {
                      vef_storage_arena_func_t arena_alloc,
                      vef_storage_ctx_t **storage, char *error_msg,
                      uint32_t error_msg_len) {
-    auto *arena = new (std::nothrow) Arena(arena_ctx, arena_alloc);
-    if (arena == nullptr) {
+    void *arena_mem = AllocateArenaStorage(arena_ctx, arena_alloc);
+    if (arena_mem == nullptr) {
       snprintf(error_msg, error_msg_len, "out of memory allocating arena");
       return true;
     }
+    auto *arena = new (arena_mem) Arena(arena_ctx, arena_alloc);
     auto *ctx = arena->construct<Index::StorageCtx<Context>>(arena);
     if (ctx == nullptr || ctx->user() == nullptr) {
-      delete arena;
+      arena->~Arena();
       snprintf(error_msg, error_msg_len,
                "out of memory allocating index storage context");
       return true;
@@ -516,7 +518,7 @@ struct CreateWrapper {
     const Index index{*index_ctx};
     bool err = F(ctx, index, space_ref, trx_ref, error_msg, error_msg_len);
     if (err) {
-      delete arena;
+      arena->~Arena();
       *storage = nullptr;
     }
     return err;
@@ -532,7 +534,7 @@ struct DropWrapper {
     Arena *arena = &ctx->arena();
     const Index index{*index_ctx};
     bool err = F(ctx, index, trx_ref, error_msg, error_msg_len);
-    delete arena;
+    arena->~Arena();
     return err;
   }
 };
@@ -545,14 +547,15 @@ struct LoadWrapper {
                      vef_storage_arena_func_t arena_alloc,
                      vef_storage_ctx_t **storage, char *error_msg,
                      uint32_t error_msg_len) {
-    auto *arena = new (std::nothrow) Arena(arena_ctx, arena_alloc);
-    if (arena == nullptr) {
+    void *arena_mem = AllocateArenaStorage(arena_ctx, arena_alloc);
+    if (arena_mem == nullptr) {
       snprintf(error_msg, error_msg_len, "out of memory allocating arena");
       return true;
     }
+    auto *arena = new (arena_mem) Arena(arena_ctx, arena_alloc);
     auto *ctx = arena->construct<Index::StorageCtx<Context>>(arena);
     if (ctx == nullptr || ctx->user() == nullptr) {
-      delete arena;
+      arena->~Arena();
       snprintf(error_msg, error_msg_len,
                "out of memory allocating index storage context");
       return true;
@@ -561,10 +564,27 @@ struct LoadWrapper {
     const Index index{*index_ctx};
     bool err = F(ctx, index, storage_ref, error_msg, error_msg_len);
     if (err) {
-      delete arena;
+      arena->~Arena();
       *storage = nullptr;
     }
     return err;
+  }
+};
+
+// TODO(villagesql-indexing): Expose unload as a builder-configurable hook
+// (e.g. .unload<F>()) so extensions can run their own cleanup.
+template <typename Context>
+struct UnloadWrapper {
+  static bool invoke(const vef_index_ctx_t *index_ctx,
+                     vef_storage_ctx_t *storage, char *error_msg,
+                     uint32_t error_msg_len) {
+    (void)index_ctx;
+    (void)error_msg;
+    (void)error_msg_len;
+    auto *ctx = reinterpret_cast<Index::StorageCtx<Context> *>(storage);
+    Arena *arena = &ctx->arena();
+    arena->~Arena();
+    return false;
   }
 };
 
@@ -1018,6 +1038,7 @@ class GlobalBuilder {
     }
     vef_type_index_intf_t intf = intf_;
     intf.version = VEF_INDEX_TYPE_INTF_VERSION;
+    intf.unload = detail::UnloadWrapper<Context>::invoke;
     return {name_, intf};
   }
 

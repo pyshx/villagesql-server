@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "db0err.h"
 #include "trx0types.h"
@@ -28,6 +29,7 @@
 // Forward declarations
 struct dict_index_t;
 struct dict_table_t;
+struct dtuple_t;
 namespace dd {
 class Index;
 }
@@ -35,6 +37,7 @@ class Index;
 namespace villagesql {
 
 class IndexContext;
+class IndexProfileDescriptor;
 
 namespace innodb {
 
@@ -49,9 +52,9 @@ class Custom_index {
  public:
   using StorageCtx = vef_storage_ctx_t;
   using StorageRef = vef_storage_ref_t;
+  using KeyRef = vef_storage_col_ref_t;
 
   static constexpr uint32_t ERROR_MSG_SIZE = 512;
-  static constexpr StorageRef EMPTY_STORAGE_REF = 0;
 
   explicit Custom_index(std::shared_ptr<const IndexContext> index_metadata)
       : index_metadata_(std::move(index_metadata)) {}
@@ -64,6 +67,12 @@ class Custom_index {
   // Custom index extension interface.
   const vef_type_index_intf_t &interface() const;
 
+  // Get the index profile for key column type.
+  const IndexProfileDescriptor *profile_for_key(uint32_t key_pos) const {
+    ut_a(key_pos < key_profiles_.size());
+    return key_profiles_[key_pos].get();
+  }
+
   // ABI index context handed to every extension index function. The pointer
   // remains valid for the lifetime of this Custom_index (the index heap).
   vef_index_ctx_t *index_ctx() { return &index_ctx_; }
@@ -74,14 +83,37 @@ class Custom_index {
   StorageCtx *storage_ctx() const { return storage_ctx_; }
   void set_storage_ctx(StorageCtx *ctx) { storage_ctx_ = ctx; }
 
-  // Persistent storage reference read from dd::Index se_private_data by
-  // check_and_set(). Used by load() to reconnect to extension storage.
-  StorageRef storage_ref() const { return storage_ref_; }
+  // Persistent storage reference
+  StorageRef storage_ref() const {
+    ut_ad(storage_ref_initialized_);
+    return storage_ref_;
+  }
+
+  // Copy storage reference from a reference index, if initialized.
+  // @return true if a reference could be set, false otherwise
+  bool copy_storage_ref(Custom_index *ref_index) {
+    if (!ref_index->storage_ref_initialized_) return false;
+    storage_ref_initialized_ = true;
+    storage_ref_ = ref_index->storage_ref_;
+    return true;
+  }
+
+  // Set storage reference
+  void set_storage_ref(StorageRef ref) {
+    storage_ref_ = ref;
+    storage_ref_initialized_ = true;
+  }
 
   // Sets up index->custom_index and restores its persistent storage
   // reference from the DD, if available.
   static dberr_t attach(dict_index_t *index, const IndexContext *meta,
                         const dd::Index *dd_index);
+
+  // Records the extension-registered profile for the key_pos'th user-defined
+  // key column of a custom index.
+  static dberr_t add_profile(dict_index_t *index,
+                             const IndexProfileDescriptor *profile,
+                             uint32_t key_pos);
 
   // Loads index from custom index storage. Carries the Custom_index runtime
   // state from old_index onto new_index's heap.
@@ -97,6 +129,10 @@ class Custom_index {
   // Drops the extension-managed storage for a custom index.
   static dberr_t drop(dict_index_t *index, trx_id_t trx_id);
 
+  // Inserts a key into the extension-managed storage for a custom index.
+  static dberr_t insert(dict_index_t *index, trx_id_t trx_id,
+                        const dtuple_t *entry, bool dup_chk_only);
+
   // Persists the custom index storage reference into dd::Index se_private_data.
   // Called from dd_write_index() after standard index metadata is written.
   template <typename Index>
@@ -108,9 +144,12 @@ class Custom_index {
 
  private:
   std::shared_ptr<const IndexContext> index_metadata_;
+  std::vector<std::shared_ptr<const IndexProfileDescriptor>> key_profiles_;
+
   vef_index_ctx_t index_ctx_{};
   StorageCtx *storage_ctx_ = nullptr;
   StorageRef storage_ref_{};
+  bool storage_ref_initialized_ = false;
 };
 
 }  // namespace innodb

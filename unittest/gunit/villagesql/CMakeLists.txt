@@ -15,7 +15,8 @@
 
 # Unit tests for VillageSQL-specific internal code
 
-# List of all VillageSQL unit tests
+# List of all VillageSQL unit tests.
+# Place additional test here as necesssary.
 SET(VILLAGESQL_UNIT_TESTS
   abi_v1_check-t
   abi_v2_check-t
@@ -33,6 +34,11 @@ SET(VILLAGESQL_UNIT_TESTS
 # duplicate symbol issues with system_charset_info on macOS. The macOS dynamic
 # linker uses two-level namespace, which causes the test and server_unittest_library
 # to have separate copies of the symbol when both define it.
+#
+# ADD_TEST registers the ctest test in all builds (so villagesql-unit-tests and
+# "ctest -L villagesql" work). ADD_GCOV_TEST additionally clears EXCLUDE_FROM_ALL
+# under ENABLE_GCOV so these tests are built by "make all" and folded into the
+# standard gcov coverage sweep, matching the gunit small/server tests.
 MACRO(ADD_VILLAGESQL_TEST test_name)
   MYSQL_ADD_EXECUTABLE(${test_name}
     ${test_name}.cc
@@ -42,6 +48,7 @@ MACRO(ADD_VILLAGESQL_TEST test_name)
     SKIP_INSTALL
     DEPENDENCIES ${GTEST_LIBRARIES}
     ADD_TEST ${test_name}
+    ADD_GCOV_TEST ${test_name}
   )
 
   TARGET_INCLUDE_DIRECTORIES(${test_name} PRIVATE
@@ -64,16 +71,10 @@ MACRO(ADD_VILLAGESQL_TEST test_name)
   )
 ENDMACRO()
 
-# Add all VillageSQL unit tests
-ADD_VILLAGESQL_TEST(abi_v1_check-t)
-ADD_VILLAGESQL_TEST(abi_v2_check-t)
-ADD_VILLAGESQL_TEST(custom_indexes-t)
-ADD_VILLAGESQL_TEST(semver-t)
-ADD_VILLAGESQL_TEST(type_builder-t)
-ADD_VILLAGESQL_TEST(type_context-t)
-ADD_VILLAGESQL_TEST(type_descriptor-t)
-ADD_VILLAGESQL_TEST(validate-t)
-ADD_VILLAGESQL_TEST(victionary_client-t)
+# Register all VillageSQL unit tests from the list above.
+FOREACH(test_name ${VILLAGESQL_UNIT_TESTS})
+  ADD_VILLAGESQL_TEST(${test_name})
+ENDFOREACH()
 
 # Custom target to build all VillageSQL unit tests
 ADD_CUSTOM_TARGET(villagesql-unit-tests
@@ -84,4 +85,3 @@ ADD_CUSTOM_TARGET(villagesql-unit-tests
 IF(TARGET test-unit)
   ADD_DEPENDENCIES(test-unit villagesql-unit-tests)
 ENDIF()
-
