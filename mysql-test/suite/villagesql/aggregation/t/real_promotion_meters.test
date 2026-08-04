@@ -8,10 +8,12 @@ CREATE TABLE t_distances (
 );
 
 INSERT INTO t_distances VALUES
-  (1, '1.25'),
-  (2, '2.5'),
-  (3, '3.75'),
+  (1, '1.25 m'),
+  (2, '2.5 m'),
+  (3, '3.75 m'),
   (4, NULL);
+
+SELECT distance FROM t_distances ORDER BY id;
 
 SELECT vsql_units.METERS::real_value(distance) AS meters
 FROM t_distances

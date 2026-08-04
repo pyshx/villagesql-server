@@ -23,6 +23,7 @@
 
 #include <villagesql/vsql.h>
 
+#include <cctype>
 #include <cerrno>
 #include <cmath>
 #include <cstddef>
@@ -60,23 +61,42 @@ void meters_from_string(std::string_view input, CustomResult out) {
   char *end = nullptr;
   errno = 0;
   double value = std::strtod(value_string.c_str(), &end);
-  if (errno == ERANGE || end == value_string.c_str() || *end != '\0' ||
-      !std::isfinite(value)) {
+  if (errno == ERANGE || end == value_string.c_str() || !std::isfinite(value)) {
+    out.warning("invalid METERS value");
+    return;
+  }
+
+  while (std::isspace(static_cast<unsigned char>(*end))) ++end;
+  if (*end == 'm') {
+    ++end;
+    while (std::isspace(static_cast<unsigned char>(*end))) ++end;
+  }
+  if (*end != '\0') {
+    out.warning("invalid METERS value");
     return;
   }
 
   auto buffer = out.buffer();
-  if (buffer.size() < kMetersSize) return;
+  if (buffer.size() < kMetersSize) {
+    out.error("response buffer too small");
+    return;
+  }
   store_double(buffer.data(), value);
   out.set_length(kMetersSize);
 }
 
 void meters_to_string(CustomArg in, StringResult out) {
-  if (in.value().size() != kMetersSize) return;
+  if (in.value().size() != kMetersSize) {
+    out.error("argument malformed");
+    return;
+  }
   auto buffer = out.buffer();
   int written = snprintf(buffer.data(), buffer.size(), "%g m",
                          load_double(in.value().data()));
-  if (written < 0 || static_cast<size_t>(written) >= buffer.size()) return;
+  if (written < 0) {
+    out.error("failed to format METERS value");
+    return;
+  }
   out.set_length(static_cast<size_t>(written));
 }
 
