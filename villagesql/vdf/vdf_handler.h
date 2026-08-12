@@ -61,6 +61,9 @@ class vdf_handler {
 
  private:
   udf_func *m_udf;
+  THD *m_thd{nullptr};
+  bool m_uses_session_context{false};
+  bool m_session_context_initialized{false};
   Item **m_args{nullptr};
   String *m_buffers{nullptr};
   uint m_arg_count{0};
@@ -76,7 +79,8 @@ class vdf_handler {
   bool m_active{false};
   const villagesql::TypeContext *m_return_type_context{nullptr};
 
-  void refresh_session_context();
+  void initialize_session_context();
+  void prepare_session_context();
 
   // Marshal arguments into m_invalues array based on declared parameter types
   void marshal_args();

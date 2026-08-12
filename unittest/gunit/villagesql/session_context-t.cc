@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include <villagesql/abi/types.h>
+#include <villagesql/vsql/func_builder.h>
 #include <villagesql/vsql/func_types.h>
 
 #include "villagesql/vdf/session_context.h"
@@ -25,6 +26,9 @@
 namespace villagesql_unittest {
 
 class SessionContextAbiTest : public ::testing::Test {};
+
+void session_vdf(vsql::Session, vsql::IntResult) {}
+void regular_vdf(vsql::IntResult) {}
 
 TEST_F(SessionContextAbiTest, KillStatusEnumValues) {
   EXPECT_EQ(0u, VEF_KILL_NOT_KILLED);
@@ -48,6 +52,23 @@ TEST_F(SessionContextAbiTest, ContextHoldsTier1Fields) {
   EXPECT_STREQ("root", ctx.priv_user);
   EXPECT_STREQ("localhost", ctx.priv_host);
   EXPECT_EQ(VEF_KILL_QUERY, ctx.kill_status);
+}
+
+TEST_F(SessionContextAbiTest, BuilderOptsInSessionVdfs) {
+  constexpr auto session =
+      vsql::func_builder::make_func<&session_vdf>("session")
+          .returns(vsql::func_builder::INT)
+          .no_params()
+          .build();
+  constexpr auto regular =
+      vsql::func_builder::make_func<&regular_vdf>("regular")
+          .returns(vsql::func_builder::INT)
+          .no_params()
+          .build();
+
+  EXPECT_TRUE(session.uses_session_context());
+  EXPECT_EQ(VEF_PROTOCOL_4, session.required_protocol());
+  EXPECT_FALSE(regular.uses_session_context());
 }
 
 class SessionAccessorTest : public ::testing::Test {};

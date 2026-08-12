@@ -190,7 +190,8 @@ typedef enum : unsigned int {
                    //   the argument width (fixes materialization truncation).
                    // + Session context Tier 1 fields on vef_context_t
                    //   (schema, connection_id, priv_user, priv_host,
-                   //   kill_status) and vef_kill_status_t.
+                   //   kill_status), vef_kill_status_t, and per-function
+                   //   opt-in.
 } vef_protocol_t;
 
 // =============================================================================
@@ -700,6 +701,9 @@ typedef struct {
   // Distinct from buffer_size, which is only the initial row-time output buffer
   // (it grows on demand); this bounds the column the result is stored into.
   size_t max_result_length;
+
+  // Populate vef_context_t session fields for this function.
+  bool uses_session_context;
 } vef_func_desc_t;
 
 // =============================================================================

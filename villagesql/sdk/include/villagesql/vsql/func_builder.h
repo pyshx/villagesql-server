@@ -429,6 +429,7 @@ class FuncBuilder {
     meta.num_params = NumParams;
     meta.buffer_size = buffer_size_;
     meta.max_result_length = max_result_length_;
+    meta.uses_session_context = has_session_param;
     meta.deterministic = deterministic_;
     for (size_t i = 0; i < NumParams; ++i) {
       meta.param_types[i] = detail::to_vef_type(param_types_[i]);
