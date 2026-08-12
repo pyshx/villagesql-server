@@ -439,6 +439,8 @@ struct Wrapper {
   static void invoke_impl(vef_context_t *ctx, vef_vdf_args_t *args,
                           vef_vdf_result_t *result,
                           std::index_sequence<Is...>) {
+    (void)ctx;
+    (void)args;
     using Params = typename FuncParamTypes<decltype(Func)>::type;
     std::array<vef_invalue_t, NumParams> vals{
         get_invalue(ctx, args, static_cast<unsigned int>(Is))...};
