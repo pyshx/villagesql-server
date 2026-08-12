@@ -27,6 +27,10 @@ void session_conn_id(Session s, IntResult out) {
   out.set(static_cast<long long>(s.connection_id()));
 }
 
+void session_conn_id_plus(Session s, IntArg offset, IntResult out) {
+  out.set(static_cast<long long>(s.connection_id()) + offset.value());
+}
+
 void session_kill_status(Session s, IntResult out) {
   out.set(static_cast<long long>(s.kill_status()));
 }
@@ -48,6 +52,10 @@ VEF_GENERATE_ENTRY_POINTS(
         .func(make_func<&session_conn_id>("session_conn_id")
                   .returns(INT)
                   .no_params()
+                  .build())
+        .func(make_func<&session_conn_id_plus>("session_conn_id_plus")
+                  .returns(INT)
+                  .param(INT)
                   .build())
         .func(make_func<&session_kill_status>("session_kill_status")
                   .returns(INT)

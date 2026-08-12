@@ -5,6 +5,8 @@ INSTALL EXTENSION vsql_session_test;
 
 --echo # connection_id matches CONNECTION_ID() of this session
 SELECT vsql_session_test.session_conn_id() = CONNECTION_ID() AS conn_id_matches;
+SELECT vsql_session_test.session_conn_id_plus(7) = CONNECTION_ID() + 7
+       AS conn_id_with_arg_matches;
 
 --echo # priv_user matches CURRENT_USER's user part
 SELECT vsql_session_test.session_priv_user() =

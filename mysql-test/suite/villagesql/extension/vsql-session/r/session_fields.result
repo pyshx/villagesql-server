@@ -4,6 +4,10 @@ INSTALL EXTENSION vsql_session_test;
 SELECT vsql_session_test.session_conn_id() = CONNECTION_ID() AS conn_id_matches;
 conn_id_matches
 1
+SELECT vsql_session_test.session_conn_id_plus(7) = CONNECTION_ID() + 7
+AS conn_id_with_arg_matches;
+conn_id_with_arg_matches
+1
 # priv_user matches CURRENT_USER's user part
 SELECT vsql_session_test.session_priv_user() =
 SUBSTRING_INDEX(CURRENT_USER(), '@', 1) AS priv_user_matches;
