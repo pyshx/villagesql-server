@@ -439,13 +439,17 @@ struct Wrapper {
   static void invoke_impl(vef_context_t *ctx, vef_vdf_args_t *args,
                           vef_vdf_result_t *result,
                           std::index_sequence<Is...>) {
-    (void)ctx;
-    (void)args;
     using Params = typename FuncParamTypes<decltype(Func)>::type;
-    std::array<vef_invalue_t, NumParams> vals{
-        get_invalue(ctx, args, static_cast<unsigned int>(Is))...};
-    Func(make_arg<std::tuple_element_t<Is, Params>>(&vals[Is])...,
-         make_result<std::tuple_element_t<NumParams, Params>>(result));
+    if constexpr (NumParams == 0) {
+      (void)ctx;
+      (void)args;
+      Func(make_result<std::tuple_element_t<0, Params>>(result));
+    } else {
+      std::array<vef_invalue_t, NumParams> vals{
+          get_invalue(ctx, args, static_cast<unsigned int>(Is))...};
+      Func(make_arg<std::tuple_element_t<Is, Params>>(&vals[Is])...,
+           make_result<std::tuple_element_t<NumParams, Params>>(result));
+    }
   }
 
   template <typename T>
@@ -622,11 +626,17 @@ struct WrapperWithSession {
                           vef_vdf_result_t *result,
                           std::index_sequence<Is...>) {
     using Params = typename FuncParamTypes<decltype(Func)>::type;
-    std::array<vef_invalue_t, NumParams> vals{
-        get_invalue(ctx, args, static_cast<unsigned int>(Is))...};
-    Func(::vsql::Session(ctx),
-         make_arg<std::tuple_element_t<1 + Is, Params>>(&vals[Is])...,
-         make_result<std::tuple_element_t<NumParams + 1, Params>>(result));
+    if constexpr (NumParams == 0) {
+      (void)args;
+      Func(::vsql::Session(ctx),
+           make_result<std::tuple_element_t<1, Params>>(result));
+    } else {
+      std::array<vef_invalue_t, NumParams> vals{
+          get_invalue(ctx, args, static_cast<unsigned int>(Is))...};
+      Func(::vsql::Session(ctx),
+           make_arg<std::tuple_element_t<1 + Is, Params>>(&vals[Is])...,
+           make_result<std::tuple_element_t<NumParams + 1, Params>>(result));
+    }
   }
 
   template <typename T>
