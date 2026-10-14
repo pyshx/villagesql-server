@@ -294,6 +294,7 @@ struct FuncWithMetadata {
         buffer_size(0),
         max_result_length(0),
         deterministic(false),
+        sql_callable(true),
         is_varargs(false),
         check_params_cache_bound(nullptr),
         check_signature(nullptr),
@@ -310,6 +311,7 @@ struct FuncWithMetadata {
   size_t buffer_size;
   size_t max_result_length;
   bool deterministic;
+  bool sql_callable;
   // When true, the function accepts a variable number of arguments. The
   // server skips argument validation and delegates to prerun. num_params
   // and param_types are unused (a varargs StaticFuncDesc has NumParams == 0).
@@ -1165,6 +1167,7 @@ struct StaticFuncDesc {
   size_t buffer_size_;
   size_t max_result_length_;
   bool deterministic_;
+  bool sql_callable_;
   bool is_varargs_;
   bool (*check_params_cache_bound_)();
   const char *(*check_signature_)(const vef_type_t *, size_t,
@@ -1189,6 +1192,7 @@ struct StaticFuncDesc {
   constexpr size_t buffer_size() const { return buffer_size_; }
   constexpr size_t max_result_length() const { return max_result_length_; }
   constexpr bool deterministic() const { return deterministic_; }
+  constexpr bool sql_callable() const { return sql_callable_; }
   constexpr auto check_params_cache_bound() const -> bool (*)() {
     return check_params_cache_bound_;
   }
@@ -1218,6 +1222,7 @@ struct StaticFuncDesc {
         buffer_size_(meta.buffer_size),
         max_result_length_(meta.max_result_length),
         deterministic_(meta.deterministic),
+        sql_callable_(meta.sql_callable),
         is_varargs_(meta.is_varargs),
         check_params_cache_bound_(meta.check_params_cache_bound),
         check_signature_(meta.check_signature),
