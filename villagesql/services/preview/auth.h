@@ -78,9 +78,12 @@ class AuthMethodRef {
 // than reaching into the registry internals above -- mirroring how
 // sql/sql_audit.cc calls on_statement_postexecute() directly.
 
-// Existence check, used by CREATE USER validation to accept a VEF auth-method
-// name the same way an installed plugin name is accepted.
-bool auth_method_exists(std::string_view method_name);
+// The name of the single registered auth method currently opting in to handle
+// UNKNOWN accounts (via its live auto_create_unknown_accounts callback), or
+// empty if none -- or if more than one does (ambiguous, so declined). Used to
+// route an unknown-account decoy to that method (see decoy handling in
+// sql/auth/) and to name the IDENTIFIED WITH method when provisioning.
+std::string auth_method_for_unknown_accounts();
 
 // Handle a CREATE USER ... IDENTIFIED WITH <method_name> [BY '...'] whose name
 // is not a loaded MySQL auth plugin, deciding whether it names a VEF extension
@@ -143,6 +146,25 @@ struct VefAuthState;
 bool maybe_apply_vef_auth_state(MPVIO_EXT *mpvio, Security_context *sctx,
                                 const char *acl_user_authid,
                                 const char *acl_user_host);
+
+// Run the account creation staged by request_provision() during the handler,
+// if any. Call only after the handler returned OK and only for a provisioning
+// login (an unknown-account decoy) -- the caller gates on that; the decoy is
+// re-resolved to the created account right after. Deferring creation to here
+// means a denied login provisions nothing. Returns true on failure (the caller
+// should fail the login closed); false if it succeeded or nothing was staged.
+bool run_vef_provision(MPVIO_EXT *mpvio);
+
+// Reconcile the token-staged roles with the resolved account's grants,
+// according to the method's live roles_mode (see vef_auth_roles_mode_t): GRANT
+// grants the missing ones, SYNC also revokes every granted role the token did
+// not claim, ACTIVATE does nothing here. Runs GRANT/REVOKE DDL on a fresh
+// internal THD that takes ACL locks itself, so it MUST be called where no ACL
+// cache lock is held -- before the role-activation block, not from
+// maybe_apply_vef_auth_state (which runs under the ACL read lock). No-op when
+// the method is in ACTIVATE mode.
+void maybe_apply_vef_role_grants(MPVIO_EXT *mpvio, const char *acl_user_authid,
+                                 const char *acl_user_host);
 
 }  // namespace villagesql::services
 

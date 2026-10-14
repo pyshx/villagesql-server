@@ -3621,7 +3621,8 @@ void Item_string::print(const THD *, String *str,
     String decoded;
     if (!villagesql::DecodeStringUncached(*get_type_context(), str_value,
                                           &decoded)) {
-      // TODO(villagesql-beta): Should we print a placeholder in case of error?
+      // TODO(villagesql-general): Should we print a placeholder in case of
+      // error?
       str->append(decoded);
     }
     str->append('\'');
@@ -7103,11 +7104,11 @@ type_conversion_status Item_string::save_in_field_inner(Field *field, bool) {
       return is_oom ? TYPE_ERR_OOM : TYPE_ERR_BAD_VALUE;
     }
 
-    // Now re-cache the new version.
-    // TODO(villagesql-beta): check on the collation settings.
+    // Now re-cache the new version. The repertoire must match the encoded
+    // bytes, not the original literal.
     fixed = false;
     init(encoded->ptr(), encoded->length(), &my_charset_bin,
-         collation.derivation, collation.repertoire);
+         collation.derivation, my_charset_repertoire(&my_charset_bin));
   }
   String *result = val_str(&str_value);
   return save_str_value_in_field(field, result);
@@ -8968,6 +8969,55 @@ bool Item_view_ref::fix_fields(THD *thd, Item **reference) {
     first_inner_table = cached_table->any_outer_leaf_table();
   }
   return false;
+}
+
+/**
+  Return the set of tables this view column logically depends on.
+
+  For a view/derived-table column that has been merged, the
+  underlying expression may itself be another view reference or
+  an arbitrary expression. In most cases, the dependency set is
+  simply the `used_tables()` of the referenced expression
+
+  There are two important refinements:
+
+  - If the view column (or its underlying field) is an outer
+    reference, we report OUTER_REF_TABLE_BIT so the optimizer can
+    treat it as referring to an outer query block.
+
+  - If the referenced expression is constant for the duration of
+    execution but the view/derived table is on the inner side of an
+    outer join (indicated by `first_inner_table`), the value may
+    still depend on whether the inner table has been null-complemented
+    (via `has_null_row()`). In this case we ensure the inner table’s
+    map is included, so the expression is not treated as an
+    unconditional constant during optimization.
+*/
+table_map Item_view_ref::used_tables() const {
+  // If this view column itself is an outer reference, report it as such.
+  if (depended_from != nullptr) return OUTER_REF_TABLE_BIT;
+  Item *inner_item = ref_item();
+  table_map inner_map = inner_item->used_tables();
+  // Note that we do not use const_for_execution() function so
+  // as to avoid multiple and recursive calls to used_tables, as this could
+  // create a problem when views are created using other views.
+  if (!(inner_map & ~INNER_TABLE_BIT) && first_inner_table != nullptr) {
+    if (inner_item->type() == Item::FIELD_ITEM) {
+      const Item_field *field = down_cast<const Item_field *>(inner_item);
+      // Const table elimination has converted field to a const value.
+      // Nevertheless, we cannot handle it as a true const value in other parts
+      // of the code, and thus have to report it as if it were original,
+      // ie. an outer reference or a regular table field.
+      return field->depended_from != nullptr ? OUTER_REF_TABLE_BIT
+                                             : field->table_ref->map();
+    }
+    // Constant value on inner side of outer join wrapped in one or more
+    // Item_view_ref levels) depends on the inner table.
+    return first_inner_table->map();
+  }
+  // In all other cases, used tables are exactly those of the underlying
+  // expression referenced by this view column.
+  return inner_map;
 }
 
 /**

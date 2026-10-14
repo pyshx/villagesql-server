@@ -70,6 +70,14 @@ class AuthContext {
   // The client host or IP.
   const char *host_or_ip() const { return ops_->host_or_ip(ctx_); }
 
+  // The client-side auth plugin the connection actually used (as advertised by
+  // the client), e.g. "mysql_clear_password" or
+  // "authentication_openid_connect_client". Lets a handler pick how to parse
+  // the credential packet by which client plugin produced it. Empty if unknown.
+  const char *client_auth_plugin() const {
+    return ops_->client_auth_plugin(ctx_);
+  }
+
   // Set the effective account the session runs AS (CURRENT_USER()). Required
   // before returning kOk. Mapping to a different account than user_name() is
   // proxying and needs a GRANT PROXY, exactly as on the plugin path.
@@ -89,6 +97,24 @@ class AuthContext {
   // (SET ROLE NONE).
   void set_active_roles(const char *const *roles, uint32_t n_roles) {
     ops_->set_active_roles(ctx_, roles, n_roles);
+  }
+
+  // True if the account being authenticated does not exist -- the login was
+  // routed here by the method's auto_create opt-in. Check before provisioning;
+  // false for a normal login against an existing account.
+  bool account_unknown() const { return ops_->account_unknown(ctx_); }
+
+  // Ask the server to provision `account` for this validated login: create it
+  // IDENTIFIED WITH this method and grant `roles`. The server runs the DDL, not
+  // the extension. Call after validating the token, when account_unknown() is
+  // true. The creation is deferred until the handler returns kOk and runs ONLY
+  // for an account that was routed here as unknown -- a request for an
+  // already-existing account is ignored, so a denied or already-known login
+  // creates nothing. It fails the login if the creation can't be done, so
+  // there's no result to return -- just describe the intent and return kOk.
+  void request_provision(const char *account, const char *const *roles,
+                         uint32_t n_roles) {
+    ops_->request_provision(ctx_, account, roles, n_roles);
   }
 
  private:
@@ -134,6 +160,43 @@ class AuthDescriptor {
   // connects.
   constexpr AuthDescriptor &client_plugin(const char *name) {
     cc_.client_auth_plugin = name;
+    return *this;
+  }
+
+  // `auto_create`: opt in to handling logins for UNKNOWN accounts. The callback
+  // is queried live per unknown-account login (so it can reflect a runtime
+  // sysvar); returning true routes unknown accounts to this method's handler,
+  // which can then provision them (see AuthContext::request_provision).
+  // Optional -- unset (or a callback returning false) keeps the standard
+  // "unknown account -> access denied" behavior.
+  constexpr AuthDescriptor &auto_create(bool (*callback)()) {
+    cc_.auto_create_unknown_accounts = callback;
+    return *this;
+  }
+
+  // `roles_mode`: how the server reconciles the roles this method stages
+  // (set_active_roles) with the resolved account's granted roles --
+  // ACTIVATE (activate-only, the default), GRANT (also grant a claimed role the
+  // account lacks), or SYNC (make the staged set authoritative: grant the
+  // missing, revoke every other granted role). See vef_auth_roles_mode_t.
+  // Queried live per login. Independent of auto_create (roles-on-existing vs
+  // create-unknown). Optional: unset (or a callback returning ACTIVATE) keeps
+  // the activate-only default (the DBA owns grants).
+  constexpr AuthDescriptor &roles_mode(vef_auth_roles_mode_t (*callback)()) {
+    cc_.roles_mode = callback;
+    return *this;
+  }
+
+  // `accepts_client_plugin`: a callback letting the method accept or reject the
+  // client plugin the client initially offered. Returning true keeps that
+  // plugin; returning false switches the client to client_plugin(). If not set,
+  // the normal client plugin negotiation continues (every offer switches to
+  // client_plugin()). The callback must only inspect the offered name and
+  // return a decision -- no packet I/O, blocking, or side effects (it runs
+  // mid-handshake). See vef_auth_cc_t::accepts_client_plugin for the contract.
+  constexpr AuthDescriptor &accepts_client_plugin(
+      bool (*callback)(const char *offered)) {
+    cc_.accepts_client_plugin = callback;
     return *this;
   }
 

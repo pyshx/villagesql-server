@@ -51,6 +51,14 @@ struct has_max_result_length<
     T, std::void_t<decltype(std::declval<const T &>().max_result_length())>>
     : std::true_type {};
 
+// Same idiom for bind(): only the typed builder can declare a
+// bind_and_check_types hook, so the legacy builder is not asked for one.
+template <typename T, typename = void>
+struct has_bind : std::false_type {};
+template <typename T>
+struct has_bind<T, std::void_t<decltype(std::declval<const T &>().bind())>>
+    : std::true_type {};
+
 template <typename FuncData, size_t Index>
 __attribute__((visibility("hidden"))) vef_func_desc_t *materialize_func_desc(
     const FuncData &func_data) {
@@ -85,6 +93,11 @@ __attribute__((visibility("hidden"))) vef_func_desc_t *materialize_func_desc(
   desc.deterministic = func_data.deterministic();
   desc.clear = func_data.clear();
   desc.accumulate = func_data.accumulate();
+  if constexpr (has_bind<FuncData>::value) {
+    desc.bind_and_check_types = func_data.bind();
+  } else {
+    desc.bind_and_check_types = nullptr;
+  }
 
   return &desc;
 }
@@ -283,6 +296,26 @@ const char *vef_check_params_cache(const Ext &e, std::index_sequence<Is...>) {
   return unbound;
 }
 
+// Returns the name of the first VDF that declares both .varargs() and
+// .bind_and_check_types(), or nullptr when none does.
+template <typename Ext, size_t... Is>
+const char *vef_check_varargs_bind(const Ext &e, std::index_sequence<Is...>) {
+  const char *offender = nullptr;
+  auto check_one = [&offender](const auto &func) {
+    if (offender) return;
+    // Only the typed builder has bind(); a legacy builder cannot declare a
+    // hook, so it can never be the offender.
+    if constexpr (vsql::func_builder::has_bind<
+                      std::decay_t<decltype(func)>>::value) {
+      if (func.num_params() == VEF_PARAM_VARARGS && func.bind() != nullptr) {
+        offender = func.name();
+      }
+    }
+  };
+  (check_one(e.template func_at<Is>()), ...);
+  return offender;
+}
+
 template <typename T, typename = void>
 struct has_check_signature : std::false_type {};
 template <typename T>
@@ -312,6 +345,14 @@ const char *vef_check_func_signatures(const Ext &e,
   (check_one(e.template func_at<Is>()), ...);
   return invalid;
 }
+
+// Detection idiom: true when the builder exposes on-init/on-deinit callbacks
+// (the vsql ExtensionBuilder does; older stable builders do not). Lets
+// vef_register_impl stay generic over builders that predate these hooks.
+template <typename T, typename = void>
+struct has_init_fn : std::false_type {};
+template <typename T>
+struct has_init_fn<T, std::void_t<decltype(T::kInitFn)>> : std::true_type {};
 
 // Core registration logic called by VEF_GENERATE_ENTRY_POINTS.
 // The counts are explicit template parameters so that array sizes are
@@ -401,6 +442,19 @@ vef_registration_t *vef_register_impl(
       reg.error_msg = error_buf;
       return &reg;
     }
+
+    const char *varargs_bind_vdf =
+        vef_check_varargs_bind(ext, std::make_index_sequence<FuncCount>{});
+    if (varargs_bind_vdf) {
+      static char error_buf[256];
+      snprintf(error_buf, sizeof(error_buf),
+               "VDF '%s' declares both .varargs() and "
+               ".bind_and_check_types(). This is not currently supported.",
+               varargs_bind_vdf);
+      reg.protocol = arg->protocol;
+      reg.error_msg = error_buf;
+      return &reg;
+    }
   }
 
   reg.protocol = VEF_PROTOCOL_4;
@@ -415,6 +469,24 @@ vef_registration_t *vef_register_impl(
   reg.required_capability_count = RequiredCapabilityCount;
   reg.required_capabilities =
       RequiredCapabilityCount > 0 ? required_capability_reqs : nullptr;
+
+  // Hand the extension-side init / deinit callbacks to the server rather than
+  // running them here. The server calls on_init once every required capability
+  // is populated, and on_deinit before it depopulates them, so both see live
+  // capabilities and registered system variables — none of which exist yet at
+  // this point. Guarded by has_init_fn so builders that predate these hooks
+  // still compile.
+  if constexpr (has_init_fn<Ext>::value) {
+    // The hooks are registered as a pair. A lone on_deinit tears down setup
+    // that never happened, and a lone on_init is usually a forgotten teardown;
+    // an extension that genuinely needs no teardown can register an empty
+    // on_deinit and say so.
+    static_assert((Ext::kInitFn == nullptr) == (Ext::kDeinitFn == nullptr),
+                  "on_init() and on_deinit() must be registered together; "
+                  "register the missing one, empty if it has no work to do");
+    reg.on_init = Ext::kInitFn;
+    reg.on_deinit = Ext::kDeinitFn;
+  }
 
   initialized = true;
   return &reg;

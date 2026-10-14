@@ -22,7 +22,9 @@
 #include <vector>
 
 #include "villagesql/sdk/include/villagesql/abi/preview/keyring.h"
+#include "villagesql/sdk/include/villagesql/abi/preview/mysql_services.h"
 #include "villagesql/sdk/include/villagesql/abi/preview/ping.h"
+#include "villagesql/sdk/include/villagesql/abi/preview/session_var.h"
 #include "villagesql/sdk/include/villagesql/abi/preview/sql_query.h"
 #include "villagesql/sdk/include/villagesql/abi/preview/statement_event.h"
 #include "villagesql/sdk/include/villagesql/abi/preview/status_var.h"
@@ -34,7 +36,9 @@
 #include "villagesql/services/preview/index_profile.h"
 #include "villagesql/services/preview/index_type.h"
 #include "villagesql/services/preview/keyring.h"
+#include "villagesql/services/preview/mysql_services.h"
 #include "villagesql/services/preview/ping.h"
+#include "villagesql/services/preview/session_var.h"
 #include "villagesql/services/preview/sql_query.h"
 #include "villagesql/services/preview/statement_event.h"
 #include "villagesql/services/preview/status_var.h"
@@ -155,6 +159,15 @@ void register_builtin_capabilities() {
                        .on_server_startup = init_thread_worker_psi_keys,
                        .on_populate = on_populate_thread_worker,
                        .on_depopulate = on_depopulate_thread_worker});
+  // mysql_services carries no server vtable — the server acquires services and
+  // writes their pointers back through the config's destination slots. The
+  // extension's vtable_dest receives a null write (an unused sink).
+  register_capability(VEF_PREVIEW_MYSQL_SERVICES_NAME,
+                      {.vtable = nullptr,
+                       .vtable_hash = "ver-1",
+                       .capability_config_hash = "ver-1",
+                       .on_populate = on_populate_mysql_services,
+                       .on_depopulate = on_depopulate_mysql_services});
   register_capability(VEF_PREVIEW_COLUMN_STORE_NAME,
                       {.vtable = preview_column_store_vtable(),
                        .vtable_hash = "ver-1",
@@ -195,6 +208,15 @@ void register_builtin_capabilities() {
                        .capability_config_hash = "ver-1",
                        .on_populate = on_populate_sys_var,
                        .on_depopulate = on_depopulate_sys_var});
+  // Session variables: per-session (THD-local) sibling of sys_var. on_populate
+  // registers each variable with PLUGIN_VAR_THDLOCAL; on_depopulate
+  // unregisters them on extension unload.
+  register_capability(VEF_PREVIEW_SESSION_VAR_NAME,
+                      {.vtable = preview_session_var_vtable(),
+                       .vtable_hash = "ver-1",
+                       .capability_config_hash = "ver-1",
+                       .on_populate = on_populate_session_var,
+                       .on_depopulate = on_depopulate_session_var});
   // Statement event: on_populate appends to the global dispatch list;
   // on_depopulate removes the handler on extension unload.
   register_capability(VEF_PREVIEW_STATEMENT_EVENT_NAME,

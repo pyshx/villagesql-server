@@ -21,38 +21,17 @@
 #include <string>
 #include <string_view>
 
+#include "my_inttypes.h"
+
 struct CHARSET_INFO;
 class Field;
 class THD;
+struct TABLE;
 
 namespace villagesql {
 
 // For use with asserts.
 const bool VILLAGESQL_NOT_IMPLEMENTED = false;
-
-// ===== Identifier normalization utilities =====
-// Get the appropriate charset for identifier normalization
-// Uses fs_name_collation() logic from MySQL DD
-const CHARSET_INFO *get_identifier_charset();
-
-// Normalize different identifier types according to MySQL rules
-// Database names: Follow lower_case_table_names setting (like MySQL DD)
-std::string normalize_database_name(const std::string &name);
-
-// Table names: Follow lower_case_table_names setting (like MySQL DD)
-std::string normalize_table_name(const std::string &name);
-
-// Column names: Always case-insensitive (per MySQL standard)
-std::string normalize_column_name(const std::string &name);
-
-// Extension names: Always case-insensitive (like plugin names)
-std::string normalize_extension_name(const std::string &name);
-
-// Type names: Always case-insensitive (like SQL type names)
-std::string normalize_type_name(const std::string &name);
-
-// Index names: Follow lower_case_table_names setting (same as table names)
-std::string normalize_index_name(const std::string &name);
 
 // Build a qualified base name string "extension_name.type_name".
 inline std::string make_qualified_base_name(std::string_view extension_name,
@@ -85,6 +64,16 @@ inline ParsedQualifiedName parse_qualified_name(std::string_view name) {
   if (dot == std::string_view::npos) return {"", std::string(name)};
   return {std::string(name.substr(0, dot)), std::string(name.substr(dot + 1))};
 }
+
+// Reads the row matching key_buf through the already-initialized index into
+// record[0], then snapshots it into record[1] as the old row for
+// ha_update_row(). Returns the handler error code, 0 on success.
+//
+// The snapshot has to happen after the read. ha_update_row() takes a diff:
+// the engine compares record[1] against record[0] and leaves out every field
+// that compares equal, so a record[1] holding anything but the row just read
+// drops columns from the update with no error.
+int read_row_for_update(TABLE &table, const uchar *key_buf);
 
 // Helper functions for reading a value from a Field.
 void read_string_field(Field *f, std::string &out);

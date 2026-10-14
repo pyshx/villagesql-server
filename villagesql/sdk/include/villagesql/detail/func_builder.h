@@ -32,6 +32,8 @@
 #include <utility>
 
 #include <villagesql/abi/types.h>
+#include <villagesql/detail/exceptions.h>
+#include <villagesql/vsql/bind_check_types.h>
 #include <villagesql/vsql/func_types.h>
 #include <villagesql/vsql/pre_post_run.h>
 #include <villagesql/vsql/type_params.h>
@@ -54,16 +56,21 @@ constexpr vef_type_t to_vef_type(const char *name) {
 
 // Auto-generated prerun/postrun for aggregate state management.
 template <typename State>
-void auto_prerun(vef_context_t *, vef_prerun_args_t *,
+void auto_prerun(vef_context_t *ctx, vef_prerun_args_t *,
                  vef_prerun_result_t *result) {
-  result->user_data = new State{};
-  result->type = VEF_RESULT_VALUE;
+  VDF_EXCEPTIONS_TRY {
+    result->user_data = new State{};
+    result->type = VEF_RESULT_VALUE;
+  }
+  VDF_EXCEPTIONS_CATCH(result);
 }
 
+// TODO(villagesql-general): nothing reports/tests postrun_result
 template <typename State>
-void auto_postrun(vef_context_t *, vef_postrun_args_t *args,
-                  vef_postrun_result_t *) {
-  delete static_cast<State *>(args->user_data);
+void auto_postrun(vef_context_t *ctx, vef_postrun_args_t *args,
+                  vef_postrun_result_t *postrun_result) {
+  VDF_EXCEPTIONS_TRY { delete static_cast<State *>(args->user_data); }
+  VDF_EXCEPTIONS_CATCH(postrun_result);
 }
 
 inline vef_invalue_t promote_v1(const vef_invalue_v1_t &v) {
@@ -289,7 +296,8 @@ struct FuncWithMetadata {
         deterministic(false),
         is_varargs(false),
         check_params_cache_bound(nullptr),
-        check_signature(nullptr) {}
+        check_signature(nullptr),
+        bind(nullptr) {}
 
   vef_vdf_func_t f;
   vef_prerun_func_t prerun;
@@ -309,6 +317,7 @@ struct FuncWithMetadata {
   bool (*check_params_cache_bound)();
   const char *(*check_signature)(const vef_type_t *, size_t,
                                  const vef_type_t &);
+  vef_bind_types_func_t bind;
 };
 
 // Extracts the params type P from a type operation function pointer,
@@ -339,10 +348,18 @@ struct TypeOpParamsType<void (*)(CustomArgWith<P>, RealResult)> {
   using type = P;
 };
 
-// Wraps void(State&) -> vef_vdf_clear_func_t
+// TODO(villagesql-general): clear function should have a vef_vdf_result_t out
+// param. Wraps void(State&) -> vef_vdf_clear_func_t
 template <typename State, auto Func>
-void agg_clear_wrapper(vef_context_t *, vef_vdf_args_t *args) {
-  Func(*static_cast<State *>(args->user_data));
+void agg_clear_wrapper(vef_context_t *ctx, vef_vdf_args_t *args) {
+  char msg[VEF_MAX_ERROR_LEN];
+  vef_vdf_result_t result{};
+  result.type = VEF_RESULT_VALUE;
+  msg[0] = '\0';
+  result.error_msg = msg;
+
+  VDF_EXCEPTIONS_TRY { Func(*static_cast<State *>(args->user_data)); }
+  VDF_EXCEPTIONS_CATCH(&result);
 }
 
 // Wraps void(State&, TypedArgs...) -> vef_vdf_accumulate_func_t
@@ -350,7 +367,10 @@ template <typename State, auto Func, size_t NumParams>
 struct AggAccumulateWrapper {
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    VDF_EXCEPTIONS_TRY {
+      invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 
  private:
@@ -374,10 +394,11 @@ struct AggAccumulateWrapper {
 // Wraps void(const State&, ResultWrapper) -> vef_vdf_func_t
 template <typename State, typename ResultWrapper, auto Func>
 struct AggResultWithOutputWrapper {
-  static void invoke(vef_context_t *, vef_vdf_args_t *args,
+  static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
     const auto &state = *static_cast<const State *>(args->user_data);
-    Func(state, ResultWrapper(result));
+    VDF_EXCEPTIONS_TRY { Func(state, ResultWrapper(result)); }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -400,6 +421,23 @@ void typed_postrun_wrapper(vef_context_t *, vef_postrun_args_t *args,
 // Predicates used by FuncBuilder::prerun/postrun to decide which wrapper
 // (if any) to install. Each is true exactly when the hook's signature
 // matches the typed shape for its slot.
+
+template <auto Hook>
+void typed_bind_wrapper(vef_context_t *, vef_bind_types_args_t *args,
+                        vef_bind_types_result_t *result) {
+  Hook(BindArgs(args), BindResult(result));
+}
+
+template <auto Hook>
+constexpr bool is_typed_bind() {
+  using Params = typename FuncParamTypes<decltype(Hook)>::type;
+  if constexpr (std::tuple_size_v<Params> != 2) {
+    return false;
+  } else {
+    return std::is_same_v<std::tuple_element_t<0, Params>, BindArgs> &&
+           std::is_same_v<std::tuple_element_t<1, Params>, BindResult>;
+  }
+}
 
 template <auto Hook>
 constexpr bool is_typed_prerun() {
@@ -433,7 +471,10 @@ template <auto Func, size_t NumParams>
 struct Wrapper {
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    VDF_EXCEPTIONS_TRY {
+      invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 
  private:
@@ -481,9 +522,10 @@ struct VarArgsWrapper {
                 "(IntResult, RealResult, StringResult, CustomResult, or "
                 "CustomResultWith<P>)");
 
-  static void invoke(vef_context_t * /*ctx*/, vef_vdf_args_t *args,
+  static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    Func(::vsql::VarArgs(args), ResultParam(result));
+    VDF_EXCEPTIONS_TRY { Func(::vsql::VarArgs(args), ResultParam(result)); }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -498,7 +540,10 @@ template <auto Func, typename State, size_t NumParams>
 struct WrapperTypedState {
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    VDF_EXCEPTIONS_TRY {
+      invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 
  private:
@@ -539,7 +584,10 @@ template <auto Func, size_t NumParams>
 struct WrapperVoidStarState {
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    VDF_EXCEPTIONS_TRY {
+      invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 
  private:
@@ -577,7 +625,10 @@ template <auto Func, size_t NumParams>
 struct WrapperVoidStarRefState {
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    VDF_EXCEPTIONS_TRY {
+      invoke_impl(ctx, args, result, std::make_index_sequence<NumParams>{});
+    }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 
  private:
@@ -648,7 +699,10 @@ struct TypeEncodeVdfWrapper {
       return;
     }
     set_default_encode_failure(result, arg);
-    Func({arg.str_value, arg.str_len}, CustomResult(result));
+    VDF_EXCEPTIONS_TRY {
+      Func({arg.str_value, arg.str_len}, CustomResult(result));
+    }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -682,7 +736,8 @@ struct TypeDecodeVdfWrapper {
       return;
     }
     set_default_decode_failure(result);
-    Func(CustomArg(&arg), StringResult(result));
+    VDF_EXCEPTIONS_TRY { Func(CustomArg(&arg), StringResult(result)); }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -698,8 +753,11 @@ struct TypeCompareVdfWrapper {
       result->type = VEF_RESULT_NULL;
       return;
     }
-    result->int_value = Func(CustomArg(&a), CustomArg(&b));
-    result->type = VEF_RESULT_VALUE;
+    VDF_EXCEPTIONS_TRY {
+      result->int_value = Func(CustomArg(&a), CustomArg(&b));
+      result->type = VEF_RESULT_VALUE;
+    }
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -709,13 +767,16 @@ template <auto Func>
 struct TypeHashVdfWrapper {
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    vef_invalue_t arg = get_invalue(ctx, args, 0);
-    if (arg.is_null) {
-      result->type = VEF_RESULT_NULL;
-      return;
+    VDF_EXCEPTIONS_TRY {
+      vef_invalue_t arg = get_invalue(ctx, args, 0);
+      if (arg.is_null) {
+        result->type = VEF_RESULT_NULL;
+        return;
+      }
+      result->int_value = static_cast<long long>(Func(CustomArg(&arg)));
+      result->type = VEF_RESULT_VALUE;
     }
-    result->int_value = static_cast<long long>(Func(CustomArg(&arg)));
-    result->type = VEF_RESULT_VALUE;
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -752,11 +813,15 @@ struct TypeEncodeWithCacheVdfWrapper {
 
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    vef_invalue_t arg = get_invalue(ctx, args, 0);
-    if (arg.is_null) {
-      result->type = VEF_RESULT_NULL;
-      return;
+    vef_invalue_t arg;
+    VDF_EXCEPTIONS_TRY {
+      arg = get_invalue(ctx, args, 0);
+      if (arg.is_null) {
+        result->type = VEF_RESULT_NULL;
+        return;
+      }
     }
+    VDF_EXCEPTIONS_CATCH(result);
     // Two call sites reach this wrapper:
     //   - Row time: the server has already resolved the return type's params,
     //     and they arrive via result->type_params (count > 0). We construct
@@ -769,12 +834,15 @@ struct TypeEncodeWithCacheVdfWrapper {
     //     below.
     MaybeParams<P> maybe_params;
     const bool input_params_known = result->type_params.count > 0;
-    if (input_params_known) {
-      maybe_params =
-          MaybeParams<P>(type_params_cache_for<P>().get(result->type_params));
+    VDF_EXCEPTIONS_TRY {
+      if (input_params_known) {
+        maybe_params =
+            MaybeParams<P>(type_params_cache_for<P>().get(result->type_params));
+      }
+      set_default_encode_failure(result, arg);
+      Func(maybe_params, {arg.str_value, arg.str_len}, CustomResult(result));
     }
-    set_default_encode_failure(result, arg);
-    Func(maybe_params, {arg.str_value, arg.str_len}, CustomResult(result));
+    VDF_EXCEPTIONS_CATCH(result);
 
     // Inference-path write-back: when the server invoked us with no input
     // type_params (signalling "please infer"), the wrapper publishes the
@@ -791,33 +859,7 @@ struct TypeEncodeWithCacheVdfWrapper {
       std::map<std::string, std::string> m;
       type_params_cache_for<P>().to_strings(maybe_params.value(), m);
 
-      // Single-pass greedy write into the caller's buffer. If a pair (with
-      // its leading comma if not first) won't fit, stop writing but keep
-      // iterating to accumulate `needed` for the snprintf-style overflow
-      // signal. Caller retries with a larger buffer.
-      char *const buf_begin = result->out_type_params->buf;
-      const size_t cap = result->out_type_params->max_buf_len;
-      char *p = buf_begin;
-      size_t needed = 0;
-      bool ok = true;
-      bool first = true;
-      for (const auto &[k, v] : m) {
-        const size_t pair_size = (first ? 0u : 1u) + k.size() + 1u + v.size();
-        if (ok && static_cast<size_t>(p - buf_begin) + pair_size <= cap) {
-          if (!first) *p++ = ',';
-          std::memcpy(p, k.data(), k.size());
-          p += k.size();
-          *p++ = '=';
-          std::memcpy(p, v.data(), v.size());
-          p += v.size();
-        } else {
-          ok = false;
-        }
-        needed += pair_size;
-        first = false;
-      }
-      result->out_type_params->actual_len = needed;
-      result->out_type_params->overflow = !ok;
+      write_params_to(result->out_type_params, m);
     }
   }
 };
@@ -841,13 +883,16 @@ struct TypeDecodeWithCacheVdfWrapper {
 
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    vef_invalue_t arg = get_invalue(ctx, args, 0);
-    if (arg.is_null) {
-      result->type = VEF_RESULT_NULL;
-      return;
+    VDF_EXCEPTIONS_TRY {
+      vef_invalue_t arg = get_invalue(ctx, args, 0);
+      if (arg.is_null) {
+        result->type = VEF_RESULT_NULL;
+        return;
+      }
+      set_default_decode_failure(result);
+      Func(CustomArgWith<P>(&arg), StringResult(result));
     }
-    set_default_decode_failure(result);
-    Func(CustomArgWith<P>(&arg), StringResult(result));
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -859,14 +904,17 @@ struct TypeCompareWithCacheVdfWrapper {
 
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    vef_invalue_t a = get_invalue(ctx, args, 0);
-    vef_invalue_t b = get_invalue(ctx, args, 1);
-    if (a.is_null || b.is_null) {
-      result->type = VEF_RESULT_NULL;
-      return;
+    VDF_EXCEPTIONS_TRY {
+      vef_invalue_t a = get_invalue(ctx, args, 0);
+      vef_invalue_t b = get_invalue(ctx, args, 1);
+      if (a.is_null || b.is_null) {
+        result->type = VEF_RESULT_NULL;
+        return;
+      }
+      result->int_value = Func(CustomArgWith<P>(&a), CustomArgWith<P>(&b));
+      result->type = VEF_RESULT_VALUE;
     }
-    result->int_value = Func(CustomArgWith<P>(&a), CustomArgWith<P>(&b));
-    result->type = VEF_RESULT_VALUE;
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -878,13 +926,16 @@ struct TypeHashWithCacheVdfWrapper {
 
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
-    vef_invalue_t arg = get_invalue(ctx, args, 0);
-    if (arg.is_null) {
-      result->type = VEF_RESULT_NULL;
-      return;
+    VDF_EXCEPTIONS_TRY {
+      vef_invalue_t arg = get_invalue(ctx, args, 0);
+      if (arg.is_null) {
+        result->type = VEF_RESULT_NULL;
+        return;
+      }
+      result->int_value = static_cast<long long>(Func(CustomArgWith<P>(&arg)));
+      result->type = VEF_RESULT_VALUE;
     }
-    result->int_value = static_cast<long long>(Func(CustomArgWith<P>(&arg)));
-    result->type = VEF_RESULT_VALUE;
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -909,17 +960,20 @@ struct TypeRealValueWithCacheVdfWrapper {
 // VDF signature: () -> STRING.
 template <auto Func>
 struct IntrinsicDefaultWrapper {
-  static void invoke(vef_context_t * /*ctx*/, vef_vdf_args_t * /*args*/,
+  static void invoke(vef_context_t *ctx, vef_vdf_args_t * /*args*/,
                      vef_vdf_result_t *result) {
     static thread_local std::string buf;
-    buf = Func(result->error_msg);
-    if (result->error_msg[0] != '\0') {
-      result->type = VEF_RESULT_ERROR;
-      return;
+    VDF_EXCEPTIONS_TRY {
+      buf = Func(result->error_msg);
+      if (result->error_msg[0] != '\0') {
+        result->type = VEF_RESULT_ERROR;
+        return;
+      }
+      *result->alt_str_buf = buf.data();
+      result->actual_len = buf.size();
+      result->type = VEF_RESULT_VALUE;
     }
-    *result->alt_str_buf = buf.data();
-    result->actual_len = buf.size();
-    result->type = VEF_RESULT_VALUE;
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -928,18 +982,21 @@ struct IntrinsicDefaultWithCacheWrapper {
   using P = std::remove_cv_t<std::remove_reference_t<
       std::tuple_element_t<0, typename FuncParamTypes<decltype(Func)>::type>>>;
 
-  static void invoke(vef_context_t * /*ctx*/, vef_vdf_args_t * /*args*/,
+  static void invoke(vef_context_t *ctx, vef_vdf_args_t * /*args*/,
                      vef_vdf_result_t *result) {
     static thread_local std::string buf;
-    const P &p = type_params_cache_for<P>().get(result->type_params);
-    buf = Func(p, result->error_msg);
-    if (result->error_msg[0] != '\0') {
-      result->type = VEF_RESULT_ERROR;
-      return;
+    VDF_EXCEPTIONS_TRY {
+      const P &p = type_params_cache_for<P>().get(result->type_params);
+      buf = Func(p, result->error_msg);
+      if (result->error_msg[0] != '\0') {
+        result->type = VEF_RESULT_ERROR;
+        return;
+      }
+      *result->alt_str_buf = buf.data();
+      result->actual_len = buf.size();
+      result->type = VEF_RESULT_VALUE;
     }
-    *result->alt_str_buf = buf.data();
-    result->actual_len = buf.size();
-    result->type = VEF_RESULT_VALUE;
+    VDF_EXCEPTIONS_CATCH(result);
   }
 };
 
@@ -950,7 +1007,7 @@ struct IntrinsicDefaultWithCacheWrapper {
 inline bool serialize_type_params(
     const std::map<std::string, std::string> &params, const char *op_name,
     std::string &out, char *error_msg) {
-  // TODO(villagesql-beta): decide on a broader character set policy.
+  // TODO(villagesql-charset): decide on a broader character set policy.
   out.clear();
   for (const auto &[key, value] : params) {
     if (key.empty() || key.find_first_of(",=") != std::string::npos) {
@@ -1008,6 +1065,13 @@ template <IntToTypeParamsFunc Func>
 struct IntToParamsWrapper {
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
+    VDF_EXCEPTIONS_TRY { invoke_impl(ctx, args, result); }
+    VDF_EXCEPTIONS_CATCH(result);
+  }
+
+ private:
+  static void invoke_impl(vef_context_t *ctx, vef_vdf_args_t *args,
+                          vef_vdf_result_t *result) {
     vef_invalue_t arg = get_invalue(ctx, args, 0);
 
     if (arg.is_null) {
@@ -1056,6 +1120,13 @@ struct ResolveParamsWrapper {
 
   static void invoke(vef_context_t *ctx, vef_vdf_args_t *args,
                      vef_vdf_result_t *result) {
+    VDF_EXCEPTIONS_TRY { invoke_impl(ctx, args, result); }
+    VDF_EXCEPTIONS_CATCH(result);
+  }
+
+ private:
+  static void invoke_impl(vef_context_t *ctx, vef_vdf_args_t *args,
+                          vef_vdf_result_t *result) {
     vef_invalue_t arg = get_invalue(ctx, args, 0);
 
     if (arg.is_null) {
@@ -1134,6 +1205,7 @@ struct StaticFuncDesc {
   bool (*check_params_cache_bound_)();
   const char *(*check_signature_)(const vef_type_t *, size_t,
                                   const vef_type_t &);
+  vef_bind_types_func_t bind_;
 
   constexpr const char *name() const { return name_; }
   // For varargs: reports VEF_PARAM_VARARGS so materialize_func_desc writes
@@ -1145,8 +1217,9 @@ struct StaticFuncDesc {
   }
   // Varargs reads args->values (protocol-3 pointer-array layout) without a
   // protocol-1 fallback, so a varargs VDF cannot run on protocol 1.
+  // bind_and_check_types exists from VEF_PROTOCOL_4.
   constexpr vef_protocol_t required_protocol() const {
-    if (max_result_length_ > 0) return VEF_PROTOCOL_4;
+    if (max_result_length_ > 0 || bind_ != nullptr) return VEF_PROTOCOL_4;
     return is_varargs_ ? VEF_PROTOCOL_3 : VEF_PROTOCOL_1;
   }
   constexpr size_t buffer_size() const { return buffer_size_; }
@@ -1167,6 +1240,7 @@ struct StaticFuncDesc {
   constexpr vef_postrun_func_t postrun() const { return postrun_; }
   constexpr vef_vdf_clear_func_t clear() const { return clear_; }
   constexpr vef_vdf_accumulate_func_t accumulate() const { return accumulate_; }
+  constexpr vef_bind_types_func_t bind() const { return bind_; }
 
   constexpr StaticFuncDesc(const char *name, const FuncWithMetadata &meta)
       : name_(name),
@@ -1182,7 +1256,8 @@ struct StaticFuncDesc {
         deterministic_(meta.deterministic),
         is_varargs_(meta.is_varargs),
         check_params_cache_bound_(meta.check_params_cache_bound),
-        check_signature_(meta.check_signature) {
+        check_signature_(meta.check_signature),
+        bind_(meta.bind) {
     for (size_t i = 0; i < NumParams && i < meta.num_params; ++i) {
       params_[i] = meta.param_types[i];
     }

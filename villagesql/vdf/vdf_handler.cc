@@ -70,6 +70,11 @@ bool vdf_handler::returns_string() const {
          m_udf->vdf_func_desc->signature->return_type.id == VEF_TYPE_STRING;
 }
 
+bool vdf_handler::returns_real() const {
+  return m_udf && m_udf->vdf_func_desc &&
+         m_udf->vdf_func_desc->signature->return_type.id == VEF_TYPE_REAL;
+}
+
 bool vdf_handler::MaybeResizeBuffer(size_t needed) {
   if (needed <= m_result_buffer_size) return false;
   const size_t new_size = RoundUpResultBuffer(needed);
@@ -80,13 +85,18 @@ bool vdf_handler::MaybeResizeBuffer(size_t needed) {
   return false;
 }
 
-bool vdf_handler::fix_fields(THD *thd [[maybe_unused]],
-                             Item_result_field *func [[maybe_unused]],
+bool vdf_handler::fix_fields(THD *thd [[maybe_unused]], Item_result_field *func,
                              uint arg_count, Item **arguments,
                              String *buffers) {
   m_args = arguments;
   m_buffers = buffers;
   m_arg_count = arg_count;
+
+  // resolve_type() derived a scale from the arguments, which only a classic
+  // UDF's init function corrects via initid->decimals. A VDF has none, so
+  // that scale would round the result away -- to 0 decimals over INT
+  // arguments, or over no arguments at all.
+  if (returns_real()) func->set_data_type_double();
 
   // Allocate invalues array for argument marshaling
   if (arg_count > 0) {
@@ -147,14 +157,21 @@ bool vdf_handler::fix_fields(THD *thd [[maybe_unused]],
   }
 
   // Validate and convert VDF arguments (custom type handling).
-  // We resolve unknown type params from sibling args by default; we then infer
-  // return type params from the args, as written into return_params.
+  // We resolve unknown type params from sibling args by default, then infer
+  // return type params from the args, as written into return_params. If the
+  // function carries a bind_and_check_types hook, the hook resolves those
+  // params and returned params instead.
   const vef_signature_t *signature = m_udf->vdf_func_desc->signature;
+  const vef_bind_types_func_t bind_and_check =
+      m_udf->vdf_func_desc->protocol >= VEF_PROTOCOL_4
+          ? m_udf->vdf_func_desc->bind_and_check_types
+          : nullptr;
   villagesql::TypeParameters return_params;
   if (signature != nullptr &&
       villagesql::ValidateAndConvertVDFArguments(
           thd, m_udf->name.str, to_string_view(m_udf->extension_name),
-          arg_count, m_args, signature, &return_params)) {
+          arg_count, m_args, signature, &return_params, bind_and_check,
+          m_context)) {
     return true;
   }
 

@@ -27,6 +27,7 @@
 #include "sql/strfunc.h"
 #include "template_utils.h"
 #include "villagesql/include/error.h"
+#include "villagesql/schema/identifier_names.h"
 #include "villagesql/types/special_vdf_call.h"
 
 namespace villagesql {
@@ -128,7 +129,7 @@ bool TypeContext::init_intrinsic_default(std::string &error_out) {
     return true;
   }
 
-  // TODO(villagesql-beta): consolidate this encode call with TypeEncoder to
+  // TODO(villagesql-general): consolidate this encode call with TypeEncoder to
   // avoid duplicating the vdf/fn dispatch logic.
   const EncodeOp &op = encode_op_.value();
   if (op.vdf() != nullptr) {
@@ -246,7 +247,7 @@ void TypeContext::resolve_cached_values() {
       // This can happen if parameters stored on disk no longer validate
       // (e.g., extension upgraded). The type will be unusable until the
       // column is altered, but we won't crash.
-      // TODO(villagesql-beta): how should we actually handle this error?
+      // TODO(villagesql-production): how should we actually handle this error?
       LogVSQL(WARNING_LEVEL,
               "resolve_params failed for type '%s' (params: %s): %s. "
               "Falling back to descriptor defaults.",
@@ -304,20 +305,23 @@ TypeParameters TypeParameters::from_raw(const std::string_view raw) {
 
   // Parse "k=v,k=v,..." into pairs, sort by lowercased key, lowercase values,
   // re-serialize. Use the same charset for both lowercasing and sort order.
-  // TODO(villagesql-beta): refactor parsing to use std::string_view.
-  const CHARSET_INFO *cs = &my_charset_utf8mb4_0900_ai_ci;
+  const CHARSET_INFO *cs = type_parameter_collation();
   std::vector<std::pair<std::string, std::string>> pairs;
   size_t start = 0;
-  while (start < raw.size()) {
+  // <= visits an empty token after a trailing comma, so it becomes a nameless
+  // parameter. This does not cause an out-of-bounds read: when start == size(),
+  // find() returns npos and substr() only errors out for pos > size().
+  while (start <= raw.size()) {
     size_t comma = raw.find(',', start);
     if (comma == std::string_view::npos) comma = raw.size();
     size_t eq = raw.find('=', start);
-    if (eq == std::string_view::npos || eq >= comma) {
-      start = comma + 1;
-      continue;
-    }
-    std::string_view key = raw.substr(start, eq - start);
-    std::string_view value = raw.substr(eq + 1, comma - eq - 1);
+    // A token with no '=' names a parameter but supplies no value. Keep it
+    // with an empty value.
+    const bool has_value = eq != std::string_view::npos && eq < comma;
+    std::string_view key = has_value ? raw.substr(start, eq - start)
+                                     : raw.substr(start, comma - start);
+    std::string_view value =
+        has_value ? raw.substr(eq + 1, comma - eq - 1) : std::string_view();
 
     // Trim whitespace
     auto trim = [](std::string_view &s) {
@@ -329,9 +333,10 @@ TypeParameters TypeParameters::from_raw(const std::string_view raw) {
     trim(value);
     std::string key_str{key};
     std::string value_str{value};
-    // Lowercase
-    key_str = casedn(cs, std::move(key_str));
-    value_str = casedn(cs, std::move(value_str));
+    // Lowercase. casedn() dereferences &s.front(), so it must not be called on
+    // an empty string (e.g. a valueless token's empty value).
+    if (!key_str.empty()) key_str = casedn(cs, std::move(key_str));
+    if (!value_str.empty()) value_str = casedn(cs, std::move(value_str));
 
     pairs.emplace_back(std::move(key_str), std::move(value_str));
     start = comma + 1;

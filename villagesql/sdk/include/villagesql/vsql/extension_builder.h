@@ -31,12 +31,12 @@ namespace vsql {
 // call site.
 using namespace func_builder;
 
-// ExtensionBuilder is the vsql-API extension builder. It is a standalone type
-// (not a wrapper around villagesql::extension_builder::ExtensionBuilder) so it
-// can evolve independently. It satisfies the same duck-typed interface required
-// by VEF_GENERATE_ENTRY_POINTS.
+// ExtensionBuilder is used to define the functionality exported by and
+// capabilities required by a VillageSQL extension. The output of the builder
+// is passed to VEF_GENERATE_ENTRY_POINTS.
 template <typename FuncTuple, typename TypeTuple,
-          typename RequiredCapabilityTuple = std::tuple<>>
+          typename RequiredCapabilityTuple = std::tuple<>,
+          void (*InitFn)() = nullptr, void (*DeinitFn)() = nullptr>
 struct ExtensionBuilder {
   FuncTuple funcs_;
   TypeTuple types_;
@@ -47,6 +47,12 @@ struct ExtensionBuilder {
   static constexpr size_t kTypeCount = std::tuple_size_v<TypeTuple>;
   static constexpr size_t kRequiredCapabilityCount =
       std::tuple_size_v<RequiredCapabilityTuple>;
+
+  // Extension-side init / deinit callbacks (null if unset). Handed to the
+  // server in vef_registration_t, which calls them — see on_init() /
+  // on_deinit() below.
+  static constexpr void (*kInitFn)() = InitFn;
+  static constexpr void (*kDeinitFn)() = DeinitFn;
 
   constexpr vef_protocol_t min_protocol() const { return min_protocol_; }
 
@@ -73,7 +79,7 @@ struct ExtensionBuilder {
   constexpr auto func(F f) const {
     auto new_funcs = std::tuple_cat(funcs_, std::make_tuple(f));
     return ExtensionBuilder<decltype(new_funcs), TypeTuple,
-                            RequiredCapabilityTuple>{
+                            RequiredCapabilityTuple, InitFn, DeinitFn>{
         new_funcs, types_, required_capabilities_,
         require_atleast_min(f.required_protocol())};
   }
@@ -88,7 +94,7 @@ struct ExtensionBuilder {
     auto new_types = std::tuple_cat(types_, std::make_tuple(t));
     auto new_funcs = std::tuple_cat(funcs_, t.embedded_funcs);
     return ExtensionBuilder<decltype(new_funcs), decltype(new_types),
-                            RequiredCapabilityTuple>{
+                            RequiredCapabilityTuple, InitFn, DeinitFn>{
         new_funcs, new_types, required_capabilities_,
         require_atleast_min(t.descriptor.vef_desc.protocol)};
   }
@@ -105,15 +111,49 @@ struct ExtensionBuilder {
   constexpr auto with(Capability &cap) const {
     auto new_caps =
         std::tuple_cat(required_capabilities_, std::make_tuple(&cap));
-    return ExtensionBuilder<FuncTuple, TypeTuple, decltype(new_caps)>{
-        funcs_, types_, new_caps, require_atleast_min(VEF_PROTOCOL_3)};
+    return ExtensionBuilder<FuncTuple, TypeTuple, decltype(new_caps), InitFn,
+                            DeinitFn>{funcs_, types_, new_caps,
+                                      require_atleast_min(VEF_PROTOCOL_3)};
+  }
+
+  // Registers a function to run once at extension load (every server startup
+  // and at install), after the extension is validated, accepted, and its
+  // required capabilities are populated. Every capability the extension
+  // declared is usable by then and its system variables hold their configured
+  // values, so this is the place to read configuration once, allocate
+  // extension-owned state, or choose CPU/ISA-specific function pointers.
+  // Read string system variables through the capability's get() rather than
+  // through the storage pointer; see preview/sys_var.h.
+  //
+  // Registered as a pair with on_deinit(): declaring one without the other
+  // fails to compile. Register an empty one when there is no work to do.
+  template <void (*Fn)()>
+  constexpr auto on_init() const {
+    return ExtensionBuilder<FuncTuple, TypeTuple, RequiredCapabilityTuple, Fn,
+                            DeinitFn>{funcs_, types_, required_capabilities_,
+                                      require_atleast_min(VEF_PROTOCOL_4)};
+  }
+
+  // Registers a function to run at extension unload (server shutdown or
+  // uninstall), before the extension's capabilities are depopulated, so it
+  // sees the same live capabilities on_init() did. It does not run when the
+  // server rejects the registration, i.e. when on_init() never ran either.
+  //
+  // Registered as a pair with on_init(): declaring one without the other
+  // fails to compile. Register an empty one when there is no work to do.
+  template <void (*Fn)()>
+  constexpr auto on_deinit() const {
+    return ExtensionBuilder<FuncTuple, TypeTuple, RequiredCapabilityTuple,
+                            InitFn, Fn>{funcs_, types_, required_capabilities_,
+                                        require_atleast_min(VEF_PROTOCOL_4)};
   }
 
   // For testing only — forces the extension to require protocol p regardless
   // of which features are registered.
   constexpr auto test_only_require_protocol(vef_protocol_t p) const {
-    return ExtensionBuilder<FuncTuple, TypeTuple, RequiredCapabilityTuple>{
-        funcs_, types_, required_capabilities_, p};
+    return ExtensionBuilder<FuncTuple, TypeTuple, RequiredCapabilityTuple,
+                            InitFn, DeinitFn>{funcs_, types_,
+                                              required_capabilities_, p};
   }
 };
 

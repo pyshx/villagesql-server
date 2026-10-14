@@ -21,7 +21,9 @@ SET(VILLAGESQL_SERVICES_SOURCES
   preview/index_profile.cc
   preview/index_type.cc
   preview/keyring.cc
+  preview/mysql_services.cc
   preview/ping.cc
+  preview/session_var.cc
   preview/statement_event.cc
   preview/sql_query.cc
   preview/status_var.cc
@@ -34,7 +36,7 @@ SET(VILLAGESQL_SERVICES_SOURCES
 ADD_LIBRARY(villagesql_services OBJECT
   ${VILLAGESQL_SERVICES_SOURCES})
 
-TARGET_LINK_LIBRARIES(villagesql_services PRIVATE extra::rapidjson extra::unordered_dense)
+TARGET_LINK_LIBRARIES(villagesql_services PRIVATE extra::rapidjson extra::unordered_dense boost)
 
 ADD_DEPENDENCIES(villagesql_services GenError)
 ADD_DEPENDENCIES(villagesql_services GenServerSource)

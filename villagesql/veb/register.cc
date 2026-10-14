@@ -17,7 +17,9 @@
 #include "villagesql/veb/register.h"
 
 #include <algorithm>
+#include <map>
 #include <set>
+#include <utility>
 
 #include "sql/sql_class.h"
 #include "villagesql/include/error.h"
@@ -126,6 +128,11 @@ bool register_preview_capabilities(THD &thd,
   auto &victionary = VictionaryClient::instance();
   victionary.assert_write_lock_held();
 
+  // Tracks which (data type, index type) pairs already have a default profile
+  // in this batch, keyed by the resolved normalized prefixes. At most one
+  // profile may be the default for a pair.
+  std::map<std::pair<std::string, std::string>, std::string> default_profiles;
+
   // Validate profile references before moving any descriptor. Each profile's
   // data type and index type must resolve to exactly one entry in the current
   // batch.
@@ -200,7 +207,31 @@ bool register_preview_capabilities(THD &thd,
       profile.set_index_type_ref(IndexTypeDescriptorKeyPrefix(
           profile.index_type_name(), resolved_index_type_ext));
     }
+
+    // Both refs are fully qualified now, so their normalized prefixes identify
+    // the (data type, index type) pair a default profile claims.
+    if (profile.default_for_type()) {
+      auto [it, inserted] = default_profiles.emplace(
+          std::make_pair(profile.type_ref().str(),
+                         profile.index_type_ref().str()),
+          prof_name);
+      if (!inserted) {
+        error_out =
+            "index profile '" + prof_name + "': type '" + profile.type_name() +
+            "' with index type '" + profile.index_type_name() +
+            "' already has a default index profile '" + it->second + "'";
+        LogVSQL(ERROR_LEVEL, "Extension '%s': %s", prof_ext.c_str(),
+                error_out.c_str());
+        return true;
+      }
+    }
   }
+
+  // Detects an index type registered more than once within this same extension
+  // batch. get_committed() below only sees already-committed descriptors, not
+  // the ones marked for insertion earlier in this loop, so a same-named
+  // duplicate inside one extension would otherwise slip through.
+  std::set<IndexTypeDescriptorKey> seen_index_type_keys;
 
   for (auto &descriptor : preview.index_types) {
     std::string index_type_name = descriptor.index_type_name();
@@ -209,6 +240,13 @@ bool register_preview_capabilities(THD &thd,
     LogVSQL(INFORMATION_LEVEL,
             "Registering index type '%s' from extension '%s'",
             index_type_name.c_str(), ext_name.c_str());
+
+    if (!seen_index_type_keys.insert(descriptor.key()).second) {
+      error_out = "index type '" + index_type_name + "' already exists";
+      LogVSQL(ERROR_LEVEL, "Extension '%s': %s", ext_name.c_str(),
+              error_out.c_str());
+      return true;
+    }
 
     const IndexTypeDescriptor *existing =
         victionary.index_type_descriptors().get_committed(descriptor.key());
@@ -231,6 +269,12 @@ bool register_preview_capabilities(THD &thd,
             index_type_name.c_str());
   }
 
+  // Detects an index profile registered more than once within this same
+  // extension batch. get_committed() below only sees already-committed
+  // descriptors, not the ones marked for insertion earlier in this loop, so a
+  // same-named duplicate inside one extension would otherwise slip through.
+  std::set<IndexProfileDescriptorKey> seen_index_profile_keys;
+
   for (auto &descriptor : preview.index_profiles) {
     std::string profile_name = descriptor.profile_name();
     std::string ext_name = descriptor.extension_name();
@@ -238,6 +282,13 @@ bool register_preview_capabilities(THD &thd,
     LogVSQL(INFORMATION_LEVEL,
             "Registering index profile '%s' from extension '%s'",
             profile_name.c_str(), ext_name.c_str());
+
+    if (!seen_index_profile_keys.insert(descriptor.key()).second) {
+      error_out = "index profile '" + profile_name + "' already exists";
+      LogVSQL(ERROR_LEVEL, "Extension '%s': %s", ext_name.c_str(),
+              error_out.c_str());
+      return true;
+    }
 
     const IndexProfileDescriptor *existing =
         victionary.index_profile_descriptors().get_committed(descriptor.key());

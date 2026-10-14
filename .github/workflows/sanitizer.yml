@@ -1,12 +1,14 @@
 name: Sanitizer Tests (ASan+UBSan)
 
-# Manual build + test run with AddressSanitizer and UndefinedBehaviorSanitizer
+# Build + test run with AddressSanitizer and UndefinedBehaviorSanitizer
 # enabled, on Linux. In a single job, off one sanitized server build, it runs:
 #   - the VillageSQL unit tests (instrumented at compile time),
 #   - the VillageSQL mysql-test suite (via --sanitize), and
 #   - every bundled extension: each VEB is rebuilt with the same sanitizers and
 #     its MTR suite is run under --sanitize. The extensions ship no C++ unit
 #     tests, only MTR suites.
+#
+# Note: on Linux, LSan (LeakSanitizer) also runs, by default, under ASan.
 #
 # Unlike the shipping build, the extension steps pass include_unbundled=yes so
 # all known extensions (vsql-vector and friends) get sanitized too.
@@ -17,16 +19,10 @@ name: Sanitizer Tests (ASan+UBSan)
 # - exts:
 #   - sources: clones of each bundled extension
 #
-# Manual-only for now. Follow-ups before this runs daily:
-#   - Triage/annotate deliberate leaks in the extensions (they have not been
-#     through the lsan.supp exercise the server has) — expect LSan/UBSan hits on
-#     the first sanitized extension runs.
-#   - Add a daily `schedule:` trigger.
-#   - Add a Slack #eng-health notification job (needs a SLACK_WEBHOOK_ENG_HEALTH
-#     secret bound to that channel).
-#   - Adding tsan/msan later is a change to SERVER_SAN_FLAGS /
-#     SAN_CFLAGS / SAN_LDFLAGS below, nothing shared.
+# Results are posted to Slack; see the notify job at the bottom.
+#
 # Trigger via: Actions tab -> Run workflow, or `gh workflow run sanitizer.yml`.
+# nightly-dispatch.yml starts one run this way after every nightly build.
 
 on:
   workflow_dispatch:
@@ -39,6 +35,11 @@ on:
         description: 'Limit the extension phase to one extension (e.g. vsql-vector); empty for all'
         required: false
         default: ''
+      slack_notify:
+        description: 'Send Slack notification with results'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: sanitizer-${{ github.ref }}
@@ -50,6 +51,17 @@ jobs:
     runs-on: [self-hosted, linux, x86_64]
     permissions:
       contents: read
+
+    # Per-phase outcomes for the notify job. A phase that never ran (an earlier
+    # non-continue-on-error step failed) reports as empty; notify renders that
+    # as "did not run".
+    outputs:
+      sha: ${{ steps.checkout_report.outputs.sha }}
+      build: ${{ steps.build.outcome }}
+      unit: ${{ steps.unit.outcome }}
+      mtr: ${{ steps.mtr.outcome }}
+      ext_build: ${{ steps.ext_build.outcome }}
+      ext_test: ${{ steps.ext_test.outcome }}
 
     env:
       SOURCE_DIR: ${{ github.workspace }}/source
@@ -92,9 +104,11 @@ jobs:
         path: source
 
     - name: Report Checkout
+      id: checkout_report
       run: |
         echo "Git SHA1: $(git -C source rev-parse HEAD)"
         echo "Git Commit: $(git -C source log -n1 --oneline)"
+        echo "sha=$(git -C source rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
     - name: Checkout bundled extensions
       run: |
@@ -118,6 +132,7 @@ jobs:
       run: sudo source/scripts/setup_linux_ext_deps.sh
 
     - name: Build VillageSQL with ASan+UBSan
+      id: build
       # build_ci.sh also builds the villagesql-unit-tests target, so the unit
       # tests are compiled with the sanitizers too.
       env:
@@ -202,3 +217,93 @@ jobs:
           exit 1
         fi
         echo "All sanitizer test phases passed."
+
+  # Posts a per-phase summary after the run.
+  notify:
+    name: Slack Notification
+    needs: build-and-test
+    # Even if build-and-test fails, but only if slack notify requested.
+    if: always() && inputs.slack_notify
+    runs-on: ubuntu-latest
+    # Posts to a webhook; needs no repo access.
+    permissions: {}
+    steps:
+      - name: Build phase summary
+        id: summary
+        env:
+          BUILD: ${{ needs.build-and-test.outputs.build }}
+          UNIT: ${{ needs.build-and-test.outputs.unit }}
+          MTR: ${{ needs.build-and-test.outputs.mtr }}
+          EXT_BUILD: ${{ needs.build-and-test.outputs.ext_build }}
+          EXT_TEST: ${{ needs.build-and-test.outputs.ext_test }}
+        run: |
+          line() {
+            local label="$1" outcome="$2" icon
+            case "$outcome" in
+              success) icon="✅" ;;
+              failure) icon="❌" ;;
+              "")      icon="⏭️"; outcome="did not run" ;;
+              *)       icon="⚠️" ;;
+            esac
+            printf '%s %s: %s\n' "$icon" "$label" "$outcome"
+          }
+          SUMMARY=$(
+            line "Server build"    "$BUILD"
+            line "Unit tests"      "$UNIT"
+            line "MTR suite"       "$MTR"
+            line "Extension build" "$EXT_BUILD"
+            line "Extension tests" "$EXT_TEST"
+          )
+          echo "$SUMMARY"
+          # jq -Rs emits a JSON string (newlines escaped), so it stays one line
+          # in GITHUB_OUTPUT and drops into the payload below unquoted.
+          echo "text=$(jq -Rs . <<<"$SUMMARY")" >> "$GITHUB_OUTPUT"
+
+      - name: Compute overall status
+        id: status
+        env:
+          RESULT: ${{ needs.build-and-test.result }}
+        run: |
+          case "$RESULT" in
+            success)   label=passed;    emoji="✅"; color="#36a64f" ;;
+            cancelled) label=cancelled; emoji="⚠️"; color="#daa520" ;;
+            *)         label=failed;    emoji="❌"; color="#cc0000" ;;
+          esac
+          {
+            echo "label=$label"
+            echo "emoji=$emoji"
+            echo "color=$color"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "${{ steps.status.outputs.emoji }} Sanitizer Tests (ASan+UBSan) ${{ steps.status.outputs.label }}",
+              "attachments": [
+                {
+                  "color": "${{ steps.status.outputs.color }}",
+                  "text":  ${{ steps.summary.outputs.text }},
+                  "fields": [
+                    {
+                      "title": "Run",
+                      "value": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View details>",
+                      "short": true
+                    },
+                    {
+                      "title": "Commit",
+                      "value": "${{ needs.build-and-test.outputs.sha || 'unknown' }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Triggered by",
+                      "value": "${{ github.event_name }}",
+                      "short": true
+                    }
+                  ]
+                }
+              ]
+            }

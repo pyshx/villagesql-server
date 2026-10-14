@@ -846,6 +846,11 @@ bool mysql_rm_db(THD *thd, const LEX_CSTRING &db, bool if_exists) {
       const Disable_binlog_guard binlog_guard(thd);
       error = Events::drop_schema_events(thd, *schema);
       error = (error || sp_drop_db_routines(thd, *schema));
+      // VillageSQL: delete custom type metadata for the dropped routines.
+      // sp_drop_db_routines bypasses the per-routine DROP path that would
+      // otherwise clean up villagesql.custom_sp_params.
+      error =
+          (error || villagesql::DeleteCustomSpParamsForDatabase(thd, db.str));
     }
     thd->pop_internal_handler();
 
@@ -1351,6 +1356,11 @@ static inline bool cmp_db_names(const char *db1_name, const char *db2_name) {
   store the name of the database, and this led to memory corruption:
   a stack pointer set by Stored Procedures was used by replication after
   the stack address was long gone.
+
+  Note: This function is also used by the replication applier thread via
+  Query_log_event::do_apply_event() when PRIVILEGE_CHECKS_USER is enabled.
+  Since no explicit USE statement is issued in this context, it must
+  explicitly refresh the database-specific privileges.
 
   @return Operation status
     @retval false Success
